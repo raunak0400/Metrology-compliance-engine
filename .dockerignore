@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.*
+*.log
+logs
+tmp
+uploads
+minio-data
+docker/data
+README.md
+tests

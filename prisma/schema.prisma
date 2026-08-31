@@ -1,0 +1,759 @@
+// =============================================================================
+// Legal Metrology Packaged Commodities Compliance Checker
+// PostgreSQL schema (source of truth) — Prisma ORM
+//
+// Domain: Department of Consumer Affairs / Legal Metrology.
+// Compliance under the Legal Metrology Act, 2009 and the Legal Metrology
+// (Packaged Commodities) Rules, 2011.
+//
+// PostgreSQL holds authoritative, normalized, relational data. Raw OCR / CV / ML
+// output lives in MongoDB; binary files live in S3/MinIO. This schema stores only
+// storage keys and Mongo document references, never binary blobs.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================ ENUMS ==========================================
+
+enum InspectionStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  AWAITING_REVIEW
+  COMPLETED
+  FAILED
+}
+
+// Overall inspection outcome. PENDING until the deterministic rule engine runs.
+enum InspectionOutcome {
+  PENDING
+  COMPLIANT
+  NON_COMPLIANT
+  MANUAL_REVIEW
+}
+
+enum MediaType {
+  IMAGE
+  DOCUMENT
+  OTHER
+}
+
+enum ImageKind {
+  ORIGINAL
+  PROCESSED
+  CROPPED_PANEL
+  ANNOTATED
+}
+
+enum ImageProcessingStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+// Mandatory / common declarations on packaged commodities.
+enum DeclarationType {
+  MRP
+  NET_QUANTITY
+  MANUFACTURER
+  PACKER
+  IMPORTER
+  MANUFACTURE_DATE
+  PACKING_DATE
+  EXPIRY_DATE
+  CONSUMER_CARE
+  COUNTRY_OF_ORIGIN
+  DIMENSIONS
+  UNIT_SALE_PRICE
+  GENERIC_NAME
+  OTHER
+}
+
+enum DeclarationSource {
+  OCR
+  ML_EXTRACTION
+  MANUAL
+}
+
+// Deterministic status of a single compliance check.
+enum ComplianceStatus {
+  PASS
+  FAIL
+  MANUAL_REVIEW
+  NOT_APPLICABLE
+}
+
+// How a rule requirement is evaluated by the deterministic rule engine.
+enum RequirementOperator {
+  EXISTS
+  NOT_EMPTY
+  REGEX_MATCH
+  NUMERIC_MIN
+  NUMERIC_MAX
+  NUMERIC_RANGE
+  MIN_TEXT_HEIGHT_MM
+  ENUM_IN
+  DATE_VALID
+  DATE_NOT_FUTURE
+  REQUIRED_IF_IMPORTED
+  CUSTOM
+}
+
+enum ViolationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ViolationStatus {
+  OPEN
+  CONFIRMED
+  DISMISSED
+  RESOLVED
+}
+
+enum MLJobType {
+  PREPROCESS
+  OCR
+  LABEL_DETECTION
+  FIELD_EXTRACTION
+  ANALYZE
+}
+
+enum MLJobStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum EvidenceType {
+  ORIGINAL_IMAGE
+  CROPPED_PANEL
+  ANNOTATED_IMAGE
+  DOCUMENT
+  OTHER
+}
+
+enum ReportType {
+  PDF
+  DOCX
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+enum DatasetSplit {
+  UNASSIGNED
+  TRAIN
+  VALIDATION
+  TEST
+}
+
+enum AnnotationStatus {
+  PENDING
+  IN_PROGRESS
+  ANNOTATED
+  REVIEWED
+  REJECTED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PROCESS
+  REVIEW
+  FINALIZE
+  EXPORT
+}
+
+// ============================ IDENTITY & RBAC =================================
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roles         UserRole[]
+  refreshTokens RefreshToken[]
+
+  inspectionsAsInspector Inspection[] @relation("InspectionInspector")
+  inspectionsAsReviewer  Inspection[] @relation("InspectionReviewer")
+  createdProducts        Product[]    @relation("ProductCreatedBy")
+  createdRules           LegalRule[]  @relation("RuleCreatedBy")
+  editedDeclarations     ExtractedDeclaration[] @relation("DeclarationEditedBy")
+  resolvedViolations     Violation[]  @relation("ViolationResolvedBy")
+  createdEvidence        Evidence[]   @relation("EvidenceCreatedBy")
+  generatedReports       Report[]     @relation("ReportGeneratedBy")
+  createdDatasets        Dataset[]    @relation("DatasetCreatedBy")
+  annotations            DatasetAnnotation[] @relation("AnnotationAuthor")
+  auditLogs              AuditLog[]   @relation("AuditActor")
+  assignedRoles          UserRole[]   @relation("RoleAssignedBy")
+
+  @@index([isActive])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique // ADMIN, INSPECTOR, REVIEWER, SUPERVISOR, ...
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions String[] @default([]) // coarse policy scopes, e.g. "rules:write"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+// User <-> Role mapping (many-to-many with metadata).
+model UserRole {
+  userId       String   @db.Uuid
+  roleId       String   @db.Uuid
+  assignedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("RoleAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// Hashed refresh tokens (rotation + revocation). Access tokens are stateless.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  tokenHash    String    @unique
+  jti          String    @unique
+  userAgent    String?
+  ip           String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ============================ CATALOG ========================================
+
+model ProductCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  code        String   @unique
+  description String?
+  parentId    String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ProductCategory[] @relation("CategoryTree")
+
+  products    Product[]
+  rules       RuleCategory[]
+  inspections Inspection[]
+
+  @@index([parentId])
+  @@map("product_categories")
+}
+
+model Manufacturer {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  address   String?
+  country   String?
+  licenseNo String?
+  contact   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@index([name])
+  @@map("manufacturers")
+}
+
+model Product {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String
+  sku                String?  @unique
+  brand              String?
+  barcode            String?
+  categoryId         String   @db.Uuid
+  manufacturerId     String?  @db.Uuid
+  netQuantityDeclared String?
+  mrpDeclared        Decimal? @db.Decimal(12, 2)
+  attributes         Json?
+  createdById        String?  @db.Uuid
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  category     ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  manufacturer Manufacturer?   @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("ProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  media       ProductMedia[]
+  inspections Inspection[]
+
+  @@index([categoryId])
+  @@index([manufacturerId])
+  @@map("products")
+}
+
+model ProductMedia {
+  id         String    @id @default(uuid()) @db.Uuid
+  productId  String    @db.Uuid
+  storageKey String
+  mimeType   String
+  kind       MediaType @default(IMAGE)
+  sizeBytes  Int?
+  createdAt  DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_media")
+}
+
+// ============================ INSPECTIONS ====================================
+
+model Inspection {
+  id          String            @id @default(uuid()) @db.Uuid
+  code        String            @unique
+  productId   String?           @db.Uuid
+  categoryId  String?           @db.Uuid
+  inspectorId String            @db.Uuid
+  reviewerId  String?           @db.Uuid
+  status      InspectionStatus  @default(DRAFT)
+  outcome     InspectionOutcome @default(PENDING)
+  source      String? // e.g. FIELD, MARKETPLACE, LAB
+  notes       String?
+  metadata    Json?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  product   Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  category  ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  inspector User             @relation("InspectionInspector", fields: [inspectorId], references: [id], onDelete: Restrict)
+  reviewer  User?            @relation("InspectionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  images       InspectionImage[]
+  declarations ExtractedDeclaration[]
+  checks       ComplianceCheck[]
+  violations   Violation[]
+  evidence     Evidence[]
+  mlJobs       MLJob[]
+  reports      Report[]
+
+  @@index([status])
+  @@index([outcome])
+  @@index([inspectorId])
+  @@index([productId])
+  @@map("inspections")
+}
+
+model InspectionImage {
+  id               String                @id @default(uuid()) @db.Uuid
+  inspectionId     String                @db.Uuid
+  storageKey       String                @unique
+  originalFilename String?
+  mimeType         String
+  sizeBytes        Int?
+  width            Int?
+  height           Int?
+  kind             ImageKind             @default(ORIGINAL)
+  status           ImageProcessingStatus @default(UPLOADED)
+  checksum         String?
+  // Reference to the raw OCR/CV document stored in MongoDB (never the payload).
+  mongoOcrDocId    String?
+  // Optional scale reference for pixel->mm conversion (null => no valid scale).
+  scaleReference   Json?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  inspection   Inspection             @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  declarations ExtractedDeclaration[]
+  mlJobs       MLJob[]
+  evidence     Evidence[]
+  datasetItems DatasetItem[]
+
+  @@index([inspectionId])
+  @@index([status])
+  @@map("inspection_images")
+}
+
+// Normalized declaration extracted from an image. Always retains the raw OCR
+// evidence (rawValue, confidence, bbox, source image) alongside the normalized
+// value so nothing is discarded.
+model ExtractedDeclaration {
+  id                 String            @id @default(uuid()) @db.Uuid
+  inspectionId       String            @db.Uuid
+  sourceImageId      String?           @db.Uuid
+  type               DeclarationType
+  normalizedValue    String?
+  rawValue           String?
+  unit               String?
+  numericValue       Decimal?          @db.Decimal(18, 4)
+  confidence         Float?
+  bbox               Json?
+  source             DeclarationSource @default(OCR)
+  extractionMetadata Json?
+  // Reference back to the raw ML field-extraction document in MongoDB.
+  mongoRefId         String?
+  isEditedByReviewer Boolean           @default(false)
+  editedById         String?           @db.Uuid
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  inspection  Inspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  sourceImage InspectionImage? @relation(fields: [sourceImageId], references: [id], onDelete: SetNull)
+  editedBy    User?            @relation("DeclarationEditedBy", fields: [editedById], references: [id], onDelete: SetNull)
+
+  checks ComplianceCheck[]
+
+  @@index([inspectionId, type])
+  @@map("extracted_declarations")
+}
+
+// ============================ LEGAL RULES ====================================
+
+model LegalRule {
+  id              String            @id @default(uuid()) @db.Uuid
+  code            String            @unique
+  title           String
+  description     String?
+  // Authoritative reference, e.g. "LM (Packaged Commodities) Rules, 2011, Rule 6".
+  actReference    String?
+  section         String?
+  version         Int               @default(1)
+  effectiveFrom   DateTime?
+  effectiveTo     DateTime?
+  isActive        Boolean           @default(true)
+  severityDefault ViolationSeverity @default(MEDIUM)
+  params          Json?
+  createdById     String?           @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  createdBy User? @relation("RuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  requirements RuleRequirement[]
+  categories   RuleCategory[]
+  checks       ComplianceCheck[]
+  violations   Violation[]
+
+  @@index([isActive])
+  @@map("legal_rules")
+}
+
+model RuleRequirement {
+  id              String              @id @default(uuid()) @db.Uuid
+  ruleId          String              @db.Uuid
+  key             String // machine key, e.g. "declaration.MRP.present"
+  declarationType DeclarationType?
+  operator        RequirementOperator
+  expected        Json? // operator params: regex, min, max, enum values, etc.
+  unit            String?
+  severity        ViolationSeverity?  // overrides rule.severityDefault when set
+  message         String? // human-readable failure reason template
+  isMandatory     Boolean             @default(true)
+  orderIndex      Int                 @default(0)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  rule   LegalRule         @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  checks ComplianceCheck[]
+
+  @@index([ruleId])
+  @@map("rule_requirements")
+}
+
+// Rule <-> ProductCategory mapping (which rules apply to which categories).
+model RuleCategory {
+  ruleId     String   @db.Uuid
+  categoryId String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  rule     LegalRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  category ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, categoryId])
+  @@index([categoryId])
+  @@map("rule_categories")
+}
+
+// ============================ COMPLIANCE =====================================
+
+// One deterministic evaluation of one rule requirement against the inspection.
+model ComplianceCheck {
+  id                  String           @id @default(uuid()) @db.Uuid
+  inspectionId        String           @db.Uuid
+  ruleId              String           @db.Uuid
+  requirementId       String?          @db.Uuid
+  declarationId       String?          @db.Uuid
+  status              ComplianceStatus
+  actualValue         String?
+  expectedValue       String?
+  reason              String?
+  confidence          Float?
+  requiresManualReview Boolean         @default(false)
+  details             Json?
+  evaluatedAt         DateTime         @default(now())
+  createdAt           DateTime         @default(now())
+
+  inspection  Inspection            @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  rule        LegalRule             @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  requirement RuleRequirement?      @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  declaration ExtractedDeclaration? @relation(fields: [declarationId], references: [id], onDelete: SetNull)
+  violation   Violation?
+
+  @@index([inspectionId])
+  @@index([ruleId])
+  @@index([status])
+  @@map("compliance_checks")
+}
+
+model Violation {
+  id             String            @id @default(uuid()) @db.Uuid
+  inspectionId   String            @db.Uuid
+  ruleId         String?           @db.Uuid
+  checkId        String?           @unique @db.Uuid
+  severity       ViolationSeverity @default(MEDIUM)
+  status         ViolationStatus   @default(OPEN)
+  title          String
+  description    String?
+  legalReference String?
+  reason         String?
+  resolvedById   String?           @db.Uuid
+  resolvedAt     DateTime?
+  reviewNotes    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  inspection Inspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  rule       LegalRule?       @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  check      ComplianceCheck? @relation(fields: [checkId], references: [id], onDelete: SetNull)
+  resolvedBy User?            @relation("ViolationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  evidence Evidence[]
+
+  @@index([inspectionId, status])
+  @@index([severity])
+  @@map("violations")
+}
+
+model Evidence {
+  id           String       @id @default(uuid()) @db.Uuid
+  inspectionId String       @db.Uuid
+  violationId  String?      @db.Uuid
+  imageId      String?      @db.Uuid
+  type         EvidenceType @default(ORIGINAL_IMAGE)
+  storageKey   String?
+  bbox         Json?
+  caption      String?
+  metadata     Json?
+  createdById  String?      @db.Uuid
+  createdAt    DateTime     @default(now())
+
+  inspection Inspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  violation  Violation?       @relation(fields: [violationId], references: [id], onDelete: SetNull)
+  image      InspectionImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  createdBy  User?            @relation("EvidenceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([inspectionId])
+  @@index([violationId])
+  @@map("evidence")
+}
+
+// ============================ ML JOB STATE ===================================
+
+// Authoritative state of an async ML job. The payload/result lives in MongoDB
+// (resultMongoId) and BullMQ (bullJobId); this row is the durable record.
+model MLJob {
+  id             String      @id @default(uuid()) @db.Uuid
+  inspectionId   String      @db.Uuid
+  imageId        String?     @db.Uuid
+  type           MLJobType
+  status         MLJobStatus @default(PENDING)
+  queueName      String?
+  bullJobId      String?
+  attempts       Int         @default(0)
+  requestPayload Json?
+  resultMongoId  String?
+  error          String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  inspection Inspection       @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  image      InspectionImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+
+  @@index([inspectionId])
+  @@index([status])
+  @@index([bullJobId])
+  @@map("ml_jobs")
+}
+
+// ============================ REPORTS ========================================
+
+model Report {
+  id            String       @id @default(uuid()) @db.Uuid
+  inspectionId  String       @db.Uuid
+  type          ReportType   @default(PDF)
+  status        ReportStatus @default(PENDING)
+  storageKey    String?
+  fileName      String?
+  sizeBytes     Int?
+  checksum      String?
+  generatedById String?      @db.Uuid
+  error         String?
+  requestedAt   DateTime     @default(now())
+  generatedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  inspection  Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  generatedBy User?      @relation("ReportGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+
+  @@index([inspectionId])
+  @@index([status])
+  @@map("reports")
+}
+
+// ============================ DATASETS =======================================
+
+model Dataset {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  purpose     String? // e.g. LABEL_DETECTION, FIELD_EXTRACTION, CLASSIFICATION
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation("DatasetCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  versions DatasetVersion[]
+  items    DatasetItem[]
+
+  @@map("datasets")
+}
+
+model DatasetVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  datasetId String   @db.Uuid
+  version   String
+  notes     String?
+  isFrozen  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  dataset Dataset       @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  items   DatasetItem[]
+
+  @@unique([datasetId, version])
+  @@map("dataset_versions")
+}
+
+model DatasetItem {
+  id               String           @id @default(uuid()) @db.Uuid
+  datasetId        String           @db.Uuid
+  versionId        String?          @db.Uuid
+  storageKey       String
+  sourceImageId    String?          @db.Uuid
+  mimeType         String?
+  split            DatasetSplit     @default(UNASSIGNED)
+  annotationStatus AnnotationStatus @default(PENDING)
+  metadata         Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  dataset     Dataset          @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  version     DatasetVersion?  @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  sourceImage InspectionImage? @relation(fields: [sourceImageId], references: [id], onDelete: SetNull)
+
+  annotations DatasetAnnotation[]
+
+  @@index([datasetId, split])
+  @@index([annotationStatus])
+  @@map("dataset_items")
+}
+
+model DatasetAnnotation {
+  id                  String           @id @default(uuid()) @db.Uuid
+  itemId              String           @db.Uuid
+  annotatorId         String?          @db.Uuid
+  fieldLabel          String? // e.g. MRP, NET_QUANTITY (declaration field label)
+  classificationLabel String?
+  bbox                Json?
+  value               String?
+  confidence          Float?
+  status              AnnotationStatus @default(PENDING)
+  metadata            Json?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  item      DatasetItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  annotator User?       @relation("AnnotationAuthor", fields: [annotatorId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+  @@map("dataset_annotations")
+}
+
+// ============================ AUDIT ==========================================
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  actorId    String?     @db.Uuid
+  action     AuditAction
+  entityType String
+  entityId   String?
+  oldState   Json?
+  newState   Json?
+  ip         String?
+  userAgent  String?
+  requestId  String?
+  createdAt  DateTime    @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
