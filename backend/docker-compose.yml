@@ -1,0 +1,150 @@
+# Local development stack for the Legal Metrology Compliance Checker Go
+# backend. Brings up PostgreSQL, MongoDB, Redis, MinIO, the Python ML service,
+# and the Go API + workers. Intended for development only.
+#
+# Run from backend/: docker compose up --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lm_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: legal_metrology
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: lm_mongodb
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: lm_redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: lm_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+
+  # Creates the default bucket on startup so the API has somewhere to write.
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin) do echo 'waiting for minio...' && sleep 2; done;
+      /usr/bin/mc mb --ignore-existing local/legal-metrology;
+      /usr/bin/mc anonymous set download local/legal-metrology;
+      exit 0;
+      "
+
+  # Separate Python ML service (OpenCV / PaddleOCR / models). Lives at
+  # ../ml-service (sibling of backend/) — unchanged by the Go migration.
+  ml-service:
+    build:
+      context: ../ml-service
+      dockerfile: Dockerfile
+    container_name: lm_ml_service
+    restart: unless-stopped
+    environment:
+      ML_SERVICE_API_KEY: change-me-ml-service-key
+    ports:
+      - '8000:8000'
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lm_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      GO_ENV: development
+      PORT: '4000'
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/legal_metrology?sslmode=disable
+      MONGODB_URI: mongodb://mongodb:27017/legal_metrology_ml
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: change-me-access-secret
+      JWT_REFRESH_SECRET: change-me-refresh-secret
+      S3_ENDPOINT: minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: legal-metrology
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_USE_SSL: 'false'
+      ML_SERVICE_URL: http://ml-service:8000
+    ports:
+      - '4000:4000'
+    command: ['./api']
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lm_worker
+    restart: unless-stopped
+    depends_on:
+      - api
+      - redis
+      - postgres
+      - mongodb
+    environment:
+      GO_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/legal_metrology?sslmode=disable
+      MONGODB_URI: mongodb://mongodb:27017/legal_metrology_ml
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: legal-metrology
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_USE_SSL: 'false'
+      ML_SERVICE_URL: http://ml-service:8000
+    command: ['./worker']
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  minio_data:
