@@ -51,6 +51,22 @@ UPDATE legal_rules SET
 WHERE id = $1
 RETURNING *;
 
+-- name: UpsertLegalRuleByCode :one
+-- Mirrors one rule from the Python rule engine's registry (GET /rules) into
+-- the local legal_rules table, purely so compliance_checks/violations have a
+-- foreign key to point at. This never drives evaluation — the Python service
+-- is the sole source of the actual ruleset; this row is a local mirror.
+INSERT INTO legal_rules (code, title, description, act_reference, severity_default, is_active)
+VALUES ($1, $2, sqlc.narg('description'), sqlc.narg('act_reference'), $3, true)
+ON CONFLICT (code) DO UPDATE SET
+  title = EXCLUDED.title,
+  description = COALESCE(EXCLUDED.description, legal_rules.description),
+  act_reference = COALESCE(EXCLUDED.act_reference, legal_rules.act_reference),
+  severity_default = EXCLUDED.severity_default,
+  is_active = true,
+  updated_at = now()
+RETURNING *;
+
 -- name: ListApplicableRules :many
 SELECT * FROM legal_rules
 WHERE is_active = true

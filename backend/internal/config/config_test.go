@@ -17,6 +17,7 @@ func clearEnv(t *testing.T) {
 		"S3_ENDPOINT", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET",
 		"S3_FORCE_PATH_STYLE", "S3_USE_SSL", "S3_PUBLIC_URL", "S3_SIGNED_URL_TTL",
 		"ML_SERVICE_URL", "ML_SERVICE_TIMEOUT_MS", "ML_SERVICE_API_KEY",
+		"RULE_ENGINE_SERVICE_URL", "RULE_ENGINE_SERVICE_TIMEOUT_MS", "RULE_ENGINE_SERVICE_API_KEY",
 		"MAX_UPLOAD_SIZE_BYTES", "ALLOWED_IMAGE_MIME",
 		"RATE_LIMIT_WINDOW_MS", "RATE_LIMIT_MAX", "CORS_ORIGINS",
 	} {
@@ -39,6 +40,7 @@ func validRequiredEnv(t *testing.T) {
 	t.Setenv("S3_SECRET_KEY", "minioadmin")
 	t.Setenv("S3_BUCKET", "legal-metrology")
 	t.Setenv("ML_SERVICE_URL", "http://localhost:8000")
+	t.Setenv("RULE_ENGINE_SERVICE_URL", "http://localhost:8001")
 }
 
 func TestLoad_MissingRequiredVars_FailsWithAllProblemsListed(t *testing.T) {
@@ -49,7 +51,7 @@ func TestLoad_MissingRequiredVars_FailsWithAllProblemsListed(t *testing.T) {
 		t.Fatal("expected an error when required env vars are missing")
 	}
 
-	for _, want := range []string{"DATABASE_URL", "MONGODB_URI", "REDIS_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET", "S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "ML_SERVICE_URL"} {
+	for _, want := range []string{"DATABASE_URL", "MONGODB_URI", "REDIS_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET", "S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET", "ML_SERVICE_URL", "RULE_ENGINE_SERVICE_URL"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected error to mention missing %s, got: %s", want, err.Error())
 		}

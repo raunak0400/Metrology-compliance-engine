@@ -10,7 +10,10 @@ for the detailed Node → Go mapping.
 > dates, consumer care, country of origin, etc.), not food-safety licensing.
 
 Computer vision / OCR / model inference lives in a **separate Python ML
-service** (`../ml-service`, unchanged by this migration).
+service** (`../ml-service`, unchanged by this migration). The deterministic
+legal rule engine — the actual compliance decision — also lives in a
+**separate Python service** (`RULE_ENGINE_SERVICE_URL`); this backend never
+evaluates legal rules itself, it only orchestrates and persists.
 
 ---
 
@@ -26,21 +29,23 @@ IMAGE
 RAW ML RESULT            → stored in MongoDB (evidence trail)
   ↓  NORMALIZATION        (deterministic, Go)
 STRUCTURED DECLARATIONS + MEASUREMENTS   → stored in PostgreSQL
-  ↓  DETERMINISTIC LEGAL RULE ENGINE     (pure, testable, Go)
-COMPLIANCE CHECKS
-  ↓
-VIOLATIONS + EVIDENCE
-  ↓
+  ↓  POST /validate → DETERMINISTIC LEGAL RULE ENGINE   (pure, testable, Python service)
+COMPLIANCE CHECKS + VIOLATIONS   → raw request/response stored in MongoDB,
+  ↓                                 checks/violations/outcome in PostgreSQL
 MANUAL REVIEW            (low-confidence / ambiguous cases only)
   ↓
 FINAL REPORT             (async, PDF/DOCX → object storage → signed URL)
 ```
 
-Inspection outcomes: `COMPLIANT`, `NON_COMPLIANT`, `MANUAL_REVIEW`, `NOT_APPLICABLE`
-(no legal rules are mapped to the inspection's product category). Individual
-compliance-check results: `PASS`, `FAIL`, `WARNING` (a non-mandatory
-requirement failed — a soft signal, never a violation), `MANUAL_REVIEW`,
-`NOT_APPLICABLE`.
+The Go backend builds the `/validate` request from PostgreSQL declarations +
+measurements, calls the Python rule engine service
+(`internal/ruleengine.Client`, mirroring `internal/ml.Client`'s role for
+OCR/NER), and persists exactly what it returns — it never computes a
+compliance verdict itself (see `internal/compliance.Service`).
+
+Inspection outcomes: `PENDING`, `COMPLIANT`, `NON_COMPLIANT`, `MANUAL_REVIEW`.
+Individual compliance-check results: `PASS`, `FAIL`, `NOT_APPLICABLE` (rule
+engine marked the rule as not applicable to this package/category).
 
 ---
 
@@ -55,6 +60,7 @@ requirement failed — a soft signal, never a violation), `MANUAL_REVIEW`,
 | Cache / queues     | Redis + Asynq (jobs, cache, rate limiting)            |
 | Object storage     | S3-compatible — MinIO (dev), AWS S3 (prod)            |
 | ML service         | Separate Python HTTP service (OpenCV/PaddleOCR/…)     |
+| Rule engine        | Separate Python HTTP service (POST /validate)         |
 | Auth               | JWT access + rotating refresh, Argon2id hashing       |
 | Validation         | go-playground/validator (via Gin `binding` tags)      |
 | Logging            | `log/slog` (structured, request-scoped)               |
@@ -85,7 +91,8 @@ backend/
     app/                shared Deps container injected into every module
     authtoken/          JWT sign/verify (split out to avoid an import cycle)
     auth/ users/ roles/ products/ inspections/ scans/ declarations/
-    compliance/         engine/ (pure rule engine) + measurement + service
+    compliance/         measurement + service (orchestrates the rule engine service)
+    ruleengine/         HTTP client for the Python rule engine (POST /validate)
     rules/ violations/ evidence/ reports/ datasets/ ml/ dashboard/ audit/
     workers/            Asynq handler registration (dispatches to services above)
     taskqueue/          Asynq task/queue name + payload contracts (shared)
@@ -284,24 +291,30 @@ requires before any further correction.
 
 `internal/compliance/measurement.go` estimates real-world sizes (e.g. text
 height) from bounding boxes — **only** when a valid scale reference exists.
-Without one it returns `hasValidScale: false`; the system never pretends
-pixel→mm conversion is accurate. Measurement logic is kept separate from OCR
-and from the rule engine.
+Without one it omits `font_height_mm`; the system never pretends pixel→mm
+conversion is accurate. The estimated heights feed the rule engine's
+`/validate` request — the rule engine service, not this package, decides
+whether a height is compliant.
 
 ---
 
 ## Testing
 
 ```bash
-go test ./...              # unit tests (rule engine, normalization, measurement, auth, tokens, config)
+go test ./...              # unit tests (normalization, measurement, auth, tokens, config)
 go vet ./...
 gofmt -l .                 # should print nothing
 ```
 
 Unit tests cover the deterministic core (pure, infrastructure-free):
-`internal/compliance/engine`, `internal/compliance` (measurement),
+`internal/compliance` (measurement),
 `internal/declarations` (normalization), `internal/authtoken`, `internal/auth`
 (password hashing), `internal/pagination`, `internal/config` (env validation).
+`cmd/api`'s live integration test exercises `internal/compliance.Service`
+against a mocked Python rule engine (`httptest.Server`), asserting Go
+correctly builds the `/validate` request and persists whatever the (mocked)
+service returns — it never asserts a specific compliance verdict, since that
+decision belongs to the real Python service, not this test.
 `cmd/api` has an infra-free handler test for `/health` and the 404 envelope.
 
 ### Infrastructure connectivity tests

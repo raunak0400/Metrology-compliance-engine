@@ -119,6 +119,11 @@ type Querier interface {
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateViolation(ctx context.Context, arg UpdateViolationParams) (Violation, error)
 	UpsertCategory(ctx context.Context, arg UpsertCategoryParams) (ProductCategory, error)
+	// Mirrors one rule from the Python rule engine's registry (GET /rules) into
+	// the local legal_rules table, purely so compliance_checks/violations have a
+	// foreign key to point at. This never drives evaluation — the Python service
+	// is the sole source of the actual ruleset; this row is a local mirror.
+	UpsertLegalRuleByCode(ctx context.Context, arg UpsertLegalRuleByCodeParams) (LegalRule, error)
 	ViolationsGroupBySeverity(ctx context.Context) ([]ViolationsGroupBySeverityRow, error)
 	ViolationsGroupByStatus(ctx context.Context) ([]ViolationsGroupByStatusRow, error)
 }

@@ -14,18 +14,20 @@ import (
 	"github.com/raunak0400/metrology-backend/internal/config"
 	"github.com/raunak0400/metrology-backend/internal/db"
 	"github.com/raunak0400/metrology-backend/internal/ml"
+	"github.com/raunak0400/metrology-backend/internal/ruleengine"
 	"github.com/raunak0400/metrology-backend/pkg/storage"
 )
 
 type Deps struct {
-	Config    *config.Config
-	Pool      *pgxpool.Pool
-	Queries   *db.Queries
-	Mongo     *mongo.Database
-	MLRepo    *ml.Repository
-	Redis     *redis.Client
-	Storage   storage.ObjectStorage
-	MLClient  *ml.Client
-	Asynq     *asynq.Client
-	Tokenizer *authtoken.Tokenizer
+	Config           *config.Config
+	Pool             *pgxpool.Pool
+	Queries          *db.Queries
+	Mongo            *mongo.Database
+	MLRepo           *ml.Repository
+	Redis            *redis.Client
+	Storage          storage.ObjectStorage
+	MLClient         *ml.Client
+	RuleEngineClient *ruleengine.Client
+	Asynq            *asynq.Client
+	Tokenizer        *authtoken.Tokenizer
 }

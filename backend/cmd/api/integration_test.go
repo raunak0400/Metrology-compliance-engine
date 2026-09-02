@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/raunak0400/metrology-backend/internal/declarations"
 	"github.com/raunak0400/metrology-backend/internal/inspections"
 	"github.com/raunak0400/metrology-backend/internal/ml"
+	"github.com/raunak0400/metrology-backend/internal/ruleengine"
 	"github.com/raunak0400/metrology-backend/pkg/mongodb"
 	"github.com/raunak0400/metrology-backend/pkg/postgres"
 	"github.com/raunak0400/metrology-backend/pkg/redisclient"
@@ -59,6 +61,86 @@ func envOr(key, def string) string {
 	return def
 }
 
+// netQtyFormatRe is the mock rule engine's stand-in for a real Legal
+// Metrology net-quantity format check — used only to decide the mocked
+// /validate response below, not a real legal rule.
+var netQtyFormatRe = regexp.MustCompile(`^\d+\s?(g|kg|ml|l)$`)
+
+// newMockRuleEngine stands in for the real Python Legal Metrology Rule
+// Engine service (see rule_engine/README.md on the ml-service branch) so
+// this test can exercise the Go orchestration path (build request -> POST
+// /validate -> persist checks/violations/outcome) without a live Python
+// service. It mirrors the real contract (GET /health, GET /rules, POST
+// /validate) with deterministic fixture rules/responses, not real legal text.
+func newMockRuleEngine(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "healthy", "service": "legal-metrology-rule-engine",
+			"ruleset_version": "it-test-1.0", "ruleset_description": "integration test fixture",
+		})
+	})
+
+	mux.HandleFunc("/rules", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ruleset_version": "it-test-1.0", "ruleset_description": "integration test fixture",
+			"rules": []map[string]any{
+				{"rule_id": "IT_TEST_MRP_EXISTS", "clause": "[TEST FIXTURE] Clause 6(1)(e)", "severity": "major", "description": "MRP must be declared", "rule_class": "mrp"},
+				{"rule_id": "IT_TEST_NET_QTY_FORMAT", "clause": "[TEST FIXTURE] Clause 8", "severity": "minor", "description": "Net quantity must follow the standard <number><unit> format", "rule_class": "net_quantity"},
+			},
+		})
+	})
+
+	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ProductID       string `json:"product_id"`
+			ExtractedFields []struct {
+				FieldType string `json:"field_type"`
+				Text      string `json:"text"`
+			} `json:"extracted_fields"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		hasMRP, netQtyOK := false, false
+		for _, f := range req.ExtractedFields {
+			switch f.FieldType {
+			case "mrp":
+				hasMRP = f.Text != ""
+			case "net_quantity":
+				netQtyOK = netQtyFormatRe.MatchString(f.Text)
+			}
+		}
+
+		violations := []map[string]any{}
+		if !hasMRP {
+			violations = append(violations, map[string]any{"rule_id": "IT_TEST_MRP_EXISTS", "clause": "[TEST FIXTURE] Clause 6(1)(e)", "severity": "major", "description": "MRP missing"})
+		}
+		if !netQtyOK {
+			violations = append(violations, map[string]any{"rule_id": "IT_TEST_NET_QTY_FORMAT", "clause": "[TEST FIXTURE] Clause 8", "severity": "minor", "description": "Net quantity format invalid", "field_evidence": "quantity not clearly stated"})
+		}
+		overallStatus := "compliant"
+		if len(violations) > 0 {
+			overallStatus = "non_compliant"
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"product_id": req.ProductID, "ruleset_version": "it-test-1.0", "overall_status": overallStatus,
+			"violations": violations,
+			"applicability_notes": []map[string]any{
+				{"rule_id": "IT_TEST_MRP_EXISTS", "applied": true, "reason": "test fixture: always applicable"},
+				{"rule_id": "IT_TEST_NET_QTY_FORMAT", "applied": true, "reason": "test fixture: always applicable"},
+			},
+			"manual_review_required": []string{}, "synthesized_fields_summary": []any{},
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // buildLiveDeps wires the exact same infrastructure cmd/api/main.go does, but
 // against the TEST_* environment (a disposable scratch stack — see
 // backend/README.md), so this test exercises real Postgres transactions,
@@ -66,8 +148,9 @@ func envOr(key, def string) string {
 // mocks. The worker process is NOT started here: this test drives the
 // business-logic services (declarations, compliance) directly wherever the
 // HTTP surface is async-only by design (image scan processing belongs to a
-// worker; POST /inspections/:id/check only enqueues).
-func buildLiveDeps(t *testing.T, vars map[string]string) *app.Deps {
+// worker; POST /inspections/:id/check only enqueues). ruleEngineURL points at
+// newMockRuleEngine, standing in for the real Python rule engine service.
+func buildLiveDeps(t *testing.T, vars map[string]string, ruleEngineURL string) *app.Deps {
 	t.Helper()
 	ctx := context.Background()
 
@@ -115,16 +198,17 @@ func buildLiveDeps(t *testing.T, vars map[string]string) *app.Deps {
 	}
 
 	return &app.Deps{
-		Config:    &config.Config{APIPrefix: "/api/v1", CORSOrigins: []string{"http://localhost:3000"}, RateLimitWindow: time.Minute, RateLimitMax: 100000, MaxUploadSizeBytes: 15_728_640, AllowedImageMIME: []string{"image/jpeg", "image/png", "image/webp"}},
-		Pool:      pool,
-		Queries:   db.New(pool),
-		Mongo:     mongoDB,
-		MLRepo:    mlRepo,
-		Redis:     redisClient,
-		Storage:   objectStorage,
-		MLClient:  ml.NewClient(envOr("TEST_ML_SERVICE_URL", "http://localhost:8000"), "", 5*time.Second),
-		Asynq:     asynqClient,
-		Tokenizer: authtoken.NewTokenizer("test-access-secret-value", "test-refresh-secret-value", 15*time.Minute, 7*24*time.Hour),
+		Config:           &config.Config{APIPrefix: "/api/v1", CORSOrigins: []string{"http://localhost:3000"}, RateLimitWindow: time.Minute, RateLimitMax: 100000, MaxUploadSizeBytes: 15_728_640, AllowedImageMIME: []string{"image/jpeg", "image/png", "image/webp"}},
+		Pool:             pool,
+		Queries:          db.New(pool),
+		Mongo:            mongoDB,
+		MLRepo:           mlRepo,
+		Redis:            redisClient,
+		Storage:          objectStorage,
+		MLClient:         ml.NewClient(envOr("TEST_ML_SERVICE_URL", "http://localhost:8000"), "", 5*time.Second),
+		RuleEngineClient: ruleengine.NewClient(ruleEngineURL, "", 5*time.Second),
+		Asynq:            asynqClient,
+		Tokenizer:        authtoken.NewTokenizer("test-access-secret-value", "test-refresh-secret-value", 15*time.Minute, 7*24*time.Hour),
 	}
 }
 
@@ -174,12 +258,15 @@ func mustDecode[T any](t *testing.T, raw json.RawMessage) T {
 // TestIntegration_FullBusinessFlow drives the Part 2 success criteria
 // end-to-end against live infrastructure: auth + RBAC, products,
 // inspections (including location/lat/long), declarations (manual
-// correction + re-evaluation trigger), the deterministic compliance engine
-// (PASS/FAIL/WARNING/NOT_APPLICABLE, run inside a transaction), violations,
-// evidence/image storage, the finalize/reopen workflow, and audit logging.
+// correction + re-evaluation trigger), compliance orchestration (build a
+// request from structured declarations, POST it to a mocked Python rule
+// engine, persist the returned checks/violations/outcome inside a
+// transaction), violations, evidence/image storage, the finalize/reopen
+// workflow, and audit logging.
 func TestIntegration_FullBusinessFlow(t *testing.T) {
 	vars := requireLiveEnv(t)
-	deps := buildLiveDeps(t, vars)
+	ruleEngineSrv := newMockRuleEngine(t)
+	deps := buildLiveDeps(t, vars, ruleEngineSrv.URL)
 	gin.SetMode(gin.TestMode)
 	router := buildRouter(deps.Config, deps)
 	ctx := context.Background()
@@ -248,10 +335,6 @@ func TestIntegration_FullBusinessFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create category: %v", err)
 	}
-	naCategory, err := deps.Queries.UpsertCategory(ctx, db.UpsertCategoryParams{Name: catCode + "-NA", Code: catCode + "-NA", Description: strPtr("Category with no rules mapped")})
-	if err != nil {
-		t.Fatalf("create NOT_APPLICABLE category: %v", err)
-	}
 
 	// ---- 4. Product module: create/list/get/patch, pagination + filtering. ----
 	code, env = doRequest(t, router, http.MethodPost, "/api/v1/products", adminToken, map[string]any{
@@ -315,19 +398,6 @@ func TestIntegration_FullBusinessFlow(t *testing.T) {
 	}
 	inspectionID := mustParseUUID(t, inspection.ID)
 
-	// A second inspection against the category with NO rules mapped -> engine
-	// must produce NOT_APPLICABLE, never a false COMPLIANT.
-	code, env = doRequest(t, router, http.MethodPost, "/api/v1/inspections", adminToken, map[string]any{
-		"productId": product.ID, "categoryId": naCategory.ID.String(), "source": "FIELD",
-	})
-	if code != http.StatusCreated {
-		t.Fatalf("create NA inspection: expected 201, got %d: %+v", code, env)
-	}
-	naInspection := mustDecode[struct {
-		ID string `json:"id"`
-	}](t, env.Data)
-	naInspectionID := mustParseUUID(t, naInspection.ID)
-
 	// ---- 7. Image upload (section 6): validated, stored in MinIO/S3, and an
 	// InspectionImage row created in PostgreSQL — never a base64 blob in Postgres. ----
 	imageID, jobID := uploadTestImage(t, router, adminToken, inspection.ID)
@@ -386,17 +456,21 @@ func TestIntegration_FullBusinessFlow(t *testing.T) {
 		t.Fatal("expected an MRP declaration")
 	}
 
-	// ---- 9. Compliance engine (sections 11-13, 19): run synchronously
+	// ---- 9. Compliance orchestration (sections 11-13, 19): run synchronously
 	// (the exported method the worker itself calls) so the test doesn't need
-	// a running worker process, but still exercises the real transactional
-	// persistence path. ----
-	complianceSvc := compliance.NewService(deps.Queries, deps.Pool, deps.Asynq, inspSvc)
+	// a running worker process, but still exercises the real path — build a
+	// request from the persisted declarations, POST it to the mocked Python
+	// rule engine, and persist the returned checks/violations/outcome inside
+	// a transaction. ----
+	complianceSvc := compliance.NewService(deps.Queries, deps.Pool, deps.Asynq, inspSvc, deps.MLRepo, deps.RuleEngineClient)
 	summary, err := complianceSvc.Run(ctx, inspectionID)
 	if err != nil {
 		t.Fatalf("run compliance evaluation: %v", err)
 	}
-	if summary.Outcome != "COMPLIANT" {
-		t.Fatalf("expected COMPLIANT (MRP present, mandatory check passes), got %s (summary=%+v)", summary.Outcome, summary)
+	// MRP is present but the net-quantity text doesn't match the mock rule
+	// engine's expected format, so it returns one violation -> NON_COMPLIANT.
+	if summary.Outcome != "NON_COMPLIANT" {
+		t.Fatalf("expected NON_COMPLIANT (MRP present but net quantity format invalid), got %s (summary=%+v)", summary.Outcome, summary)
 	}
 
 	code, env = doRequest(t, router, http.MethodGet, "/api/v1/inspections/"+inspection.ID+"/checks", adminToken, nil)
@@ -406,29 +480,31 @@ func TestIntegration_FullBusinessFlow(t *testing.T) {
 	checks := mustDecode[[]struct {
 		Status string `json:"status"`
 	}](t, env.Data)
-	var sawPass, sawWarning bool
+	var sawPass, sawFail bool
 	for _, c := range checks {
 		switch c.Status {
 		case "PASS":
 			sawPass = true
-		case "WARNING":
-			sawWarning = true
+		case "FAIL":
+			sawFail = true
 		}
 	}
 	if !sawPass {
-		t.Fatalf("expected at least one PASS check (mandatory MRP EXISTS), got %+v", checks)
+		t.Fatalf("expected at least one PASS check (MRP present), got %+v", checks)
 	}
-	if !sawWarning {
-		t.Fatalf("expected the non-mandatory NET_QUANTITY format requirement to produce a WARNING (not a violation), got %+v", checks)
+	if !sawFail {
+		t.Fatalf("expected the malformed NET_QUANTITY to produce a FAIL check + violation, got %+v", checks)
 	}
 
-	// The NOT_APPLICABLE inspection (no rules mapped to its category).
-	naSummary, err := complianceSvc.Run(ctx, naInspectionID)
-	if err != nil {
-		t.Fatalf("run compliance evaluation for NA inspection: %v", err)
+	code, env = doRequest(t, router, http.MethodGet, "/api/v1/inspections/"+inspection.ID+"/violations", adminToken, nil)
+	if code != http.StatusOK {
+		t.Fatalf("list violations: expected 200, got %d: %+v", code, env)
 	}
-	if naSummary.Outcome != "NOT_APPLICABLE" {
-		t.Fatalf("expected NOT_APPLICABLE for a category with no mapped rules, got %s", naSummary.Outcome)
+	violationsList := mustDecode[[]struct {
+		LegalReference *string `json:"legal_reference"`
+	}](t, env.Data)
+	if len(violationsList) != 1 {
+		t.Fatalf("expected exactly 1 persisted violation, got %+v", violationsList)
 	}
 
 	// ---- 10. Declaration manual correction (section 9): update via HTTP,

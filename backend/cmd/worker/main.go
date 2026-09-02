@@ -21,6 +21,7 @@ import (
 	"github.com/raunak0400/metrology-backend/internal/inspections"
 	"github.com/raunak0400/metrology-backend/internal/ml"
 	"github.com/raunak0400/metrology-backend/internal/reports"
+	"github.com/raunak0400/metrology-backend/internal/ruleengine"
 	"github.com/raunak0400/metrology-backend/internal/scans"
 	"github.com/raunak0400/metrology-backend/internal/taskqueue"
 	"github.com/raunak0400/metrology-backend/internal/workers"
@@ -65,6 +66,7 @@ func main() {
 
 	queries := db.New(pool)
 	mlClient := ml.NewClient(cfg.MLServiceURL, cfg.MLServiceAPIKey, cfg.MLServiceTimeout)
+	ruleEngineClient := ruleengine.NewClient(cfg.RuleEngineServiceURL, cfg.RuleEngineServiceAPIKey, cfg.RuleEngineServiceTimeout)
 	mlRepo := ml.NewRepository(mongoDB)
 	if err := mlRepo.EnsureIndexes(ctx); err != nil {
 		slog.Error("failed to ensure mongodb indexes", "err", err)
@@ -83,7 +85,7 @@ func main() {
 	defer asynqClient.Close()
 
 	scanPipeline := scans.NewPipeline(queries, objectStorage, mlClient, mlRepo, declSvc, asynqClient)
-	complianceSvc := compliance.NewService(queries, pool, asynqClient, inspSvc)
+	complianceSvc := compliance.NewService(queries, pool, asynqClient, inspSvc, mlRepo, ruleEngineClient)
 	reportSvc := reports.NewService(queries, objectStorage, asynqClient, inspSvc)
 
 	mux := workers.NewMux(workers.Deps{

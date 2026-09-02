@@ -114,3 +114,26 @@ func (r *Repository) SaveMLResult(ctx context.Context, jobType, inspectionID, im
 	}
 	return res.InsertedID.(primitive.ObjectID).Hex(), nil
 }
+
+// GetLatestMLResult decodes the most recently stored payload for a job type
+// (e.g. "ANALYZE", "RULE_ENGINE_VALIDATION") for an inspection into out.
+// Returns mongo.ErrNoDocuments when nothing has been stored yet — callers
+// that treat this data as optional/best-effort (e.g. building a rule-engine
+// request from a package analysis that may not exist yet) should handle that
+// case explicitly rather than failing.
+func (r *Repository) GetLatestMLResult(ctx context.Context, jobType, inspectionID string, out interface{}) error {
+	opts := options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: -1}})
+	var doc mlResultDocument
+	if err := r.db.Collection(resultCollectionName).FindOne(ctx, bson.M{
+		"inspectionId": inspectionID, "jobType": jobType,
+	}, opts).Decode(&doc); err != nil {
+		return err
+	}
+	// Round-trip through JSON: doc.Payload decodes from BSON as generic
+	// maps/slices, not the target struct's Go types.
+	raw, err := json.Marshal(doc.Payload)
+	if err != nil {
+		return fmt.Errorf("marshal stored payload: %w", err)
+	}
+	return json.Unmarshal(raw, out)
+}

@@ -38,6 +38,7 @@ import (
 	"github.com/raunak0400/metrology-backend/internal/reports"
 	"github.com/raunak0400/metrology-backend/internal/response"
 	"github.com/raunak0400/metrology-backend/internal/roles"
+	"github.com/raunak0400/metrology-backend/internal/ruleengine"
 	"github.com/raunak0400/metrology-backend/internal/rules"
 	"github.com/raunak0400/metrology-backend/internal/scans"
 	"github.com/raunak0400/metrology-backend/internal/users"
@@ -111,16 +112,17 @@ func main() {
 	defer asynqClient.Close()
 
 	deps := &app.Deps{
-		Config:    cfg,
-		Pool:      pool,
-		Queries:   db.New(pool),
-		Mongo:     mongoDB,
-		MLRepo:    mlRepo,
-		Redis:     redisClient,
-		Storage:   objectStorage,
-		MLClient:  ml.NewClient(cfg.MLServiceURL, cfg.MLServiceAPIKey, cfg.MLServiceTimeout),
-		Asynq:     asynqClient,
-		Tokenizer: authtoken.NewTokenizer(cfg.JWTAccessSecret, cfg.JWTRefreshSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL),
+		Config:           cfg,
+		Pool:             pool,
+		Queries:          db.New(pool),
+		Mongo:            mongoDB,
+		MLRepo:           mlRepo,
+		Redis:            redisClient,
+		Storage:          objectStorage,
+		MLClient:         ml.NewClient(cfg.MLServiceURL, cfg.MLServiceAPIKey, cfg.MLServiceTimeout),
+		RuleEngineClient: ruleengine.NewClient(cfg.RuleEngineServiceURL, cfg.RuleEngineServiceAPIKey, cfg.RuleEngineServiceTimeout),
+		Asynq:            asynqClient,
+		Tokenizer:        authtoken.NewTokenizer(cfg.JWTAccessSecret, cfg.JWTRefreshSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL),
 	}
 
 	router := buildRouter(cfg, deps)

@@ -1,16 +1,14 @@
 // Measurement logic: deterministic geometry only, deliberately SEPARATE from
-// OCR and from the legal rule engine. It estimates real-world sizes (e.g.
-// declaration text height) from bounding boxes, but ONLY when a valid scale
-// reference exists. Without one it reports HasValidScale=false: pixel-to-mm
-// conversion is never assumed to be accurate. The rule engine consumes these
-// results; it does not compute them.
+// OCR and from the legal rule engine (which now lives in the Python rule
+// engine service). It estimates real-world sizes (e.g. declaration text
+// height) from bounding boxes, but ONLY when a valid scale reference exists.
+// Without one it reports hasValidScale=false: pixel-to-mm conversion is never
+// assumed to be accurate. The result feeds the rule engine's
+// font_height_mm/text_measurements inputs; the rule engine — not this
+// package — decides whether a height is compliant.
 package compliance
 
-import (
-	"encoding/json"
-
-	"github.com/raunak0400/metrology-backend/internal/compliance/engine"
-)
+import "encoding/json"
 
 // ScaleReference mirrors InspectionImage.scale_reference (JSONB, nullable).
 type ScaleReference struct {
@@ -64,8 +62,8 @@ func roundTo(v float64, decimals int) float64 {
 	return float64(int64(v*mult+0.5)) / mult
 }
 
-// DeclarationScaleRow is the minimal shape needed to compute measurements for
-// one declaration (see queries/declarations.sql: ListDeclarationsWithScaleByInspection).
+// DeclarationScaleRow is the minimal shape needed to compute a measurement
+// for one declaration (see queries/declarations.sql: ListDeclarationsWithScaleByInspection).
 type DeclarationScaleRow struct {
 	DeclarationID  string
 	Type           string
@@ -73,10 +71,13 @@ type DeclarationScaleRow struct {
 	ScaleReference []byte
 }
 
-// ComputeMeasurements builds engine.Measurement results for an inspection from
-// its declarations' bounding boxes and each source image's scale reference.
-func ComputeMeasurements(rows []DeclarationScaleRow) []engine.Measurement {
-	out := make([]engine.Measurement, 0, len(rows))
+// DeclarationHeightsMM estimates real-world text height (mm) per declaration
+// ID from each declaration's bbox and its source image's scale reference. A
+// missing map entry, or a nil value, means no valid scale reference existed
+// for that declaration — the caller (building a rule-engine request) omits
+// font_height_mm rather than assuming pixels == mm.
+func DeclarationHeightsMM(rows []DeclarationScaleRow) map[string]*float64 {
+	out := make(map[string]*float64, len(rows))
 	for _, r := range rows {
 		var bbox *BBox
 		if len(r.BBoxJSON) > 0 {
@@ -92,13 +93,8 @@ func ComputeMeasurements(rows []DeclarationScaleRow) []engine.Measurement {
 				scale = &s
 			}
 		}
-		heightMm, hasValidScale := EstimateTextHeightMm(bbox, scale)
-		out = append(out, engine.Measurement{
-			DeclarationID: r.DeclarationID,
-			Type:          r.Type,
-			HeightMm:      heightMm,
-			HasValidScale: hasValidScale,
-		})
+		heightMm, _ := EstimateTextHeightMm(bbox, scale)
+		out[r.DeclarationID] = heightMm
 	}
 	return out
 }

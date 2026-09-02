@@ -41,6 +41,10 @@ type Config struct {
 	MLServiceTimeout time.Duration
 	MLServiceAPIKey  string
 
+	RuleEngineServiceURL     string
+	RuleEngineServiceTimeout time.Duration
+	RuleEngineServiceAPIKey  string
+
 	MaxUploadSizeBytes int64
 	AllowedImageMIME   []string
 
@@ -157,6 +161,10 @@ func Load() (*Config, error) {
 		MLServiceURL:     req("ML_SERVICE_URL"),
 		MLServiceTimeout: time.Duration(optInt("ML_SERVICE_TIMEOUT_MS", 30000)) * time.Millisecond,
 		MLServiceAPIKey:  os.Getenv("ML_SERVICE_API_KEY"),
+
+		RuleEngineServiceURL:     req("RULE_ENGINE_SERVICE_URL"),
+		RuleEngineServiceTimeout: time.Duration(optInt("RULE_ENGINE_SERVICE_TIMEOUT_MS", 15000)) * time.Millisecond,
+		RuleEngineServiceAPIKey:  os.Getenv("RULE_ENGINE_SERVICE_API_KEY"),
 
 		MaxUploadSizeBytes: optInt64("MAX_UPLOAD_SIZE_BYTES", 15_728_640),
 		AllowedImageMIME:   csv("ALLOWED_IMAGE_MIME", "image/jpeg,image/png,image/webp"),

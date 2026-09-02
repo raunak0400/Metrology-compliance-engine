@@ -481,3 +481,57 @@ func (q *Queries) UpdateLegalRule(ctx context.Context, arg UpdateLegalRuleParams
 	)
 	return i, err
 }
+
+const upsertLegalRuleByCode = `-- name: UpsertLegalRuleByCode :one
+INSERT INTO legal_rules (code, title, description, act_reference, severity_default, is_active)
+VALUES ($1, $2, $4, $5, $3, true)
+ON CONFLICT (code) DO UPDATE SET
+  title = EXCLUDED.title,
+  description = COALESCE(EXCLUDED.description, legal_rules.description),
+  act_reference = COALESCE(EXCLUDED.act_reference, legal_rules.act_reference),
+  severity_default = EXCLUDED.severity_default,
+  is_active = true,
+  updated_at = now()
+RETURNING id, code, title, description, act_reference, section, version, effective_from, effective_to, is_active, severity_default, params, created_by_id, created_at, updated_at
+`
+
+type UpsertLegalRuleByCodeParams struct {
+	Code            string            `json:"code"`
+	Title           string            `json:"title"`
+	SeverityDefault ViolationSeverity `json:"severity_default"`
+	Description     *string           `json:"description"`
+	ActReference    *string           `json:"act_reference"`
+}
+
+// Mirrors one rule from the Python rule engine's registry (GET /rules) into
+// the local legal_rules table, purely so compliance_checks/violations have a
+// foreign key to point at. This never drives evaluation — the Python service
+// is the sole source of the actual ruleset; this row is a local mirror.
+func (q *Queries) UpsertLegalRuleByCode(ctx context.Context, arg UpsertLegalRuleByCodeParams) (LegalRule, error) {
+	row := q.db.QueryRow(ctx, upsertLegalRuleByCode,
+		arg.Code,
+		arg.Title,
+		arg.SeverityDefault,
+		arg.Description,
+		arg.ActReference,
+	)
+	var i LegalRule
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Title,
+		&i.Description,
+		&i.ActReference,
+		&i.Section,
+		&i.Version,
+		&i.EffectiveFrom,
+		&i.EffectiveTo,
+		&i.IsActive,
+		&i.SeverityDefault,
+		&i.Params,
+		&i.CreatedByID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
