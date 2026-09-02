@@ -1,6 +1,6 @@
 -- name: CreateInspection :one
-INSERT INTO inspections (code, product_id, category_id, inspector_id, source, notes, metadata)
-VALUES ($1, sqlc.narg('product_id'), sqlc.narg('category_id'), $2, sqlc.narg('source'), sqlc.narg('notes'), sqlc.narg('metadata'))
+INSERT INTO inspections (code, product_id, category_id, inspector_id, source, notes, metadata, location, latitude, longitude)
+VALUES ($1, sqlc.narg('product_id'), sqlc.narg('category_id'), $2, sqlc.narg('source'), sqlc.narg('notes'), sqlc.narg('metadata'), sqlc.narg('location'), sqlc.narg('latitude'), sqlc.narg('longitude'))
 RETURNING *;
 
 -- name: GetInspection :one
@@ -56,6 +56,9 @@ UPDATE inspections SET
   reviewer_id = COALESCE(sqlc.narg('reviewer_id'), reviewer_id),
   notes = COALESCE(sqlc.narg('notes'), notes),
   metadata = COALESCE(sqlc.narg('metadata'), metadata),
+  location = COALESCE(sqlc.narg('location'), location),
+  latitude = COALESCE(sqlc.narg('latitude'), latitude),
+  longitude = COALESCE(sqlc.narg('longitude'), longitude),
   updated_at = now()
 WHERE id = $1
 RETURNING *;
@@ -65,3 +68,21 @@ UPDATE inspections SET status = 'PROCESSING', started_at = now(), updated_at = n
 
 -- name: SetInspectionOutcome :exec
 UPDATE inspections SET status = $2, outcome = $3, completed_at = now(), updated_at = now() WHERE id = $1;
+
+-- name: FinalizeInspection :one
+UPDATE inspections SET
+  is_finalized = true,
+  finalized_at = now(),
+  finalized_by_id = $2,
+  updated_at = now()
+WHERE id = $1 AND is_finalized = false
+RETURNING *;
+
+-- name: ReopenInspection :one
+UPDATE inspections SET
+  is_finalized = false,
+  finalized_at = NULL,
+  finalized_by_id = NULL,
+  updated_at = now()
+WHERE id = $1 AND is_finalized = true
+RETURNING *;

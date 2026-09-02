@@ -65,6 +65,30 @@ type ExtractFieldsResult struct {
 	CreatedAt    string           `json:"createdAt"`
 }
 
+// ScaleReferenceMM is the pixel<->real-world-millimetre calibration the ML
+// service may detect (e.g. from a reference card/ruler in frame). Mirrors
+// internal/compliance.ScaleReference exactly, since it round-trips through
+// InspectionImage.scale_reference (JSONB) unchanged — see scans/pipeline.go.
+// A nil/zero value means no valid scale reference was found; the measurement
+// package (internal/compliance/measurement.go) never assumes pixels == mm.
+type ScaleReferenceMM struct {
+	PxPerMm           *float64 `json:"pxPerMm,omitempty"`
+	ReferenceObjectMm *float64 `json:"referenceObjectMm,omitempty"`
+	ReferenceObjectPx *float64 `json:"referenceObjectPx,omitempty"`
+	Source            *string  `json:"source,omitempty"`
+}
+
+// AnalyzeResult is the consolidated ML analysis JSON contract: the single
+// call the scan pipeline makes per image (POST /ml/analyze). OCR/Regions/
+// Fields are consumed directly (OCR -> MongoDB evidence trail, Fields ->
+// normalized declarations via internal/declarations). The remaining fields
+// are the broader per-package analysis the ML team may populate over time;
+// they are stored verbatim in MongoDB (see internal/ml.Repository.SaveMLResult)
+// as the flexible analysis document and are NOT forced into PostgreSQL —
+// only the legally relevant, normalized subset the pipeline explicitly
+// extracts (Fields, ScaleReferenceMM) reaches PostgreSQL. Never contains
+// image_base64 — the image itself lives in S3/MinIO, referenced by
+// ImageRef.StorageKey/ImageURL.
 type AnalyzeResult struct {
 	InspectionID string           `json:"inspectionId"`
 	ImageID      string           `json:"imageId"`
@@ -73,6 +97,25 @@ type AnalyzeResult struct {
 	Regions      []DetectedRegion `json:"regions"`
 	Fields       []ExtractedField `json:"fields"`
 	CreatedAt    string           `json:"createdAt"`
+
+	// Consolidated per-package analysis (see package doc). Flexible/nested
+	// parts use map[string]interface{} deliberately — the ML team owns their
+	// shape, and this backend must not need a code change every time a new
+	// nested key is added; the whole document is preserved as-is in MongoDB.
+	ProductID           *string                `json:"productId,omitempty"`
+	Category            *string                `json:"category,omitempty"`
+	SaleChannel         *string                `json:"saleChannel,omitempty"`
+	NetWeightKg         *float64               `json:"netWeightKg,omitempty"`
+	IsImported          *bool                  `json:"isImported,omitempty"`
+	PackageShape        *string                `json:"packageShape,omitempty"`
+	PackageSurfaceType  *string                `json:"packageSurfaceType,omitempty"`
+	ScaleReferenceMM    *ScaleReferenceMM      `json:"scaleReferenceMm,omitempty"`
+	PanelMetadata       map[string]interface{} `json:"panelMetadata,omitempty"`
+	PanelAnalysis       map[string]interface{} `json:"panelAnalysis,omitempty"`
+	TextOverlapAnalysis map[string]interface{} `json:"textOverlapAnalysis,omitempty"`
+	ExtractedTags       []string               `json:"extractedTags,omitempty"`
+	TextMeasurements    map[string]interface{} `json:"textMeasurements,omitempty"`
+	ExtraFields         map[string]interface{} `json:"extraFields,omitempty"`
 }
 
 type HealthResult struct {

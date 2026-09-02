@@ -17,3 +17,6 @@ UPDATE inspection_images SET status = $2, updated_at = now() WHERE id = $1;
 
 -- name: MarkInspectionImageProcessed :exec
 UPDATE inspection_images SET status = 'PROCESSED', mongo_ocr_doc_id = $2, updated_at = now() WHERE id = $1;
+
+-- name: SetInspectionImageScaleReference :exec
+UPDATE inspection_images SET scale_reference = $2, updated_at = now() WHERE id = $1;

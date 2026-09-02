@@ -113,6 +113,20 @@ func (p *Pipeline) run(ctx context.Context, inspectionID, imageID, mlJobID uuid.
 		return fmt.Errorf("persist declarations: %w", err)
 	}
 
+	// 3b) Persist the scale reference (if the ML service found one) so the
+	// measurement package can convert declaration bbox heights to real-world
+	// mm. Without this, MIN_TEXT_HEIGHT_MM checks always route to manual
+	// review — never assumed, only computed from an actual calibration.
+	if analysis.ScaleReferenceMM != nil {
+		scaleJSON, err := json.Marshal(analysis.ScaleReferenceMM)
+		if err != nil {
+			return fmt.Errorf("marshal scale reference: %w", err)
+		}
+		if err := p.q.SetInspectionImageScaleReference(ctx, db.SetInspectionImageScaleReferenceParams{ID: imageID, ScaleReference: scaleJSON}); err != nil {
+			return fmt.Errorf("persist scale reference: %w", err)
+		}
+	}
+
 	// 4) Update authoritative rows with references to the raw Mongo documents.
 	if err := p.q.MarkInspectionImageProcessed(ctx, db.MarkInspectionImageProcessedParams{ID: imageID, MongoOcrDocID: &ocrDocID}); err != nil {
 		return fmt.Errorf("mark image processed: %w", err)

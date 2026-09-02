@@ -11,6 +11,7 @@ type ComplianceStatus string
 const (
 	StatusPass          ComplianceStatus = "PASS"
 	StatusFail          ComplianceStatus = "FAIL"
+	StatusWarning       ComplianceStatus = "WARNING"
 	StatusManualReview  ComplianceStatus = "MANUAL_REVIEW"
 	StatusNotApplicable ComplianceStatus = "NOT_APPLICABLE"
 )
@@ -21,6 +22,9 @@ const (
 	OutcomeCompliant    Outcome = "COMPLIANT"
 	OutcomeNonCompliant Outcome = "NON_COMPLIANT"
 	OutcomeManualReview Outcome = "MANUAL_REVIEW"
+	// OutcomeNotApplicable: no legal rules are mapped to the inspection's
+	// product category, so there is nothing to comply or fail with.
+	OutcomeNotApplicable Outcome = "NOT_APPLICABLE"
 )
 
 type Severity string

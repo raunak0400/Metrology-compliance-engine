@@ -23,8 +23,15 @@ sql:
           - db_type: "timestamptz"
             go_type: { type: "time.Time", pointer: true }
             nullable: true
+          # json.RawMessage (not plain []byte): encoding/json base64-encodes a
+          # bare []byte field, which would turn every JSONB column into an
+          # unusable base64 string in API responses instead of nested JSON.
+          # json.RawMessage's MarshalJSON/UnmarshalJSON pass the bytes through
+          # as-is. Same underlying type as []byte, so dbutil.JSONBytes and
+          # every existing json.Unmarshal(x.Field, ...) call site still work
+          # unchanged (Go assignability: one side unnamed = no conversion needed).
           - db_type: "jsonb"
-            go_type: { type: "[]byte" }
+            go_type: { type: "encoding/json.RawMessage" }
           - db_type: "numeric"
             go_type: "float64"
           - db_type: "numeric"

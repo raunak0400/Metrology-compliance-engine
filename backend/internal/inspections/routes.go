@@ -91,5 +91,43 @@ func RegisterRoutes(rg *gin.RouterGroup, d *app.Deps) *Service {
 		response.OK(c, inspection)
 	})
 
+	// Finalize/reopen: a controlled, audited alternative to the generic PATCH
+	// above. Once finalized, PATCH (and declaration/violation edits) are
+	// rejected until the inspection is explicitly reopened.
+	g.POST("/:id/finalize", middleware.RequirePermission(constants.PermInspectionsFinalize), func(c *gin.Context) {
+		id, err := httpapi.ParseUUIDParam(c, "id")
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
+		user, ok := middleware.CurrentUser(c)
+		if !ok {
+			_ = c.Error(apperror.Unauthorized(""))
+			return
+		}
+		inspection, err := svc.Finalize(c.Request.Context(), id, user.ID)
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
+		auditSvc.Record(c, audit.RecordParams{Action: db.AuditActionFINALIZE, EntityType: "Inspection", EntityID: id.String(), NewState: inspection})
+		response.OK(c, inspection)
+	})
+
+	g.POST("/:id/reopen", middleware.RequirePermission(constants.PermInspectionsFinalize), func(c *gin.Context) {
+		id, err := httpapi.ParseUUIDParam(c, "id")
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
+		inspection, err := svc.Reopen(c.Request.Context(), id)
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
+		auditSvc.Record(c, audit.RecordParams{Action: db.AuditActionUPDATE, EntityType: "Inspection", EntityID: id.String(), NewState: inspection})
+		response.OK(c, inspection)
+	})
+
 	return svc
 }

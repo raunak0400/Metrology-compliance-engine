@@ -19,6 +19,7 @@ var knownTypes = map[string]bool{
 	"IMPORTER": true, "MANUFACTURE_DATE": true, "PACKING_DATE": true,
 	"EXPIRY_DATE": true, "CONSUMER_CARE": true, "COUNTRY_OF_ORIGIN": true,
 	"DIMENSIONS": true, "UNIT_SALE_PRICE": true, "GENERIC_NAME": true,
+	"BEST_BEFORE": true, "USE_BY_DATE": true,
 }
 
 var nonWordRunRe = regexp.MustCompile(`\s+`)
@@ -108,7 +109,7 @@ func Normalize(field ml.ExtractedField) Normalized {
 		}
 		return Normalized{Type: t, NormalizedValue: normalized, NumericValue: value, Unit: unit}
 
-	case "MANUFACTURE_DATE", "PACKING_DATE", "EXPIRY_DATE":
+	case "MANUFACTURE_DATE", "PACKING_DATE", "EXPIRY_DATE", "BEST_BEFORE", "USE_BY_DATE":
 		normalized := nonWordRunRe.ReplaceAllString(raw, " ")
 		var np *string
 		if normalized != "" {

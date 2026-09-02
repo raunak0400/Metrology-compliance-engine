@@ -212,9 +212,9 @@ func buildRouter(cfg *config.Config, deps *app.Deps) *gin.Engine {
 	inspSvc := inspections.RegisterRoutes(v1, deps)
 	scans.RegisterRoutes(v1, deps, inspSvc)
 	violSvc := violations.RegisterRoutes(v1, deps, inspSvc)
-	compliance.RegisterRoutes(v1, deps, inspSvc, violSvc)
+	complianceSvc := compliance.RegisterRoutes(v1, deps, inspSvc, violSvc)
 	evidence.RegisterRoutes(v1, deps, inspSvc)
-	declarations.RegisterRoutes(v1, deps, inspSvc)
+	declarations.RegisterRoutes(v1, deps, inspSvc, complianceSvc)
 	reports.RegisterRoutes(v1, deps, inspSvc)
 	datasets.RegisterRoutes(v1, deps)
 

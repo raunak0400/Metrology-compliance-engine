@@ -15,7 +15,7 @@ import (
 
 // RegisterRoutes owns /inspections/:id/check, /:id/checks, /:id/violations.
 func RegisterRoutes(rg *gin.RouterGroup, d *app.Deps, inspSvc *inspections.Service, violSvc *violations.Service) *Service {
-	svc := NewService(d.Queries, d.Asynq, inspSvc)
+	svc := NewService(d.Queries, d.Pool, d.Asynq, inspSvc)
 	auditSvc := audit.NewService(d.Queries)
 
 	g := rg.Group("/inspections")

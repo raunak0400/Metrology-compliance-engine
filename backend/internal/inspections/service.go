@@ -36,6 +36,9 @@ func (s *Service) Create(ctx context.Context, req CreateInspectionRequest, inspe
 		Source:      dbutil.StrPtr(req.Source),
 		Notes:       dbutil.StrPtr(req.Notes),
 		Metadata:    dbutil.JSONBytes(req.Metadata),
+		Location:    dbutil.StrPtr(req.Location),
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
 	})
 }
 
@@ -88,8 +91,12 @@ func (s *Service) Ensure(ctx context.Context, id uuid.UUID) (db.Inspection, erro
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateInspectionRequest) (db.Inspection, error) {
-	if _, err := s.Ensure(ctx, id); err != nil {
+	insp, err := s.Ensure(ctx, id)
+	if err != nil {
 		return db.Inspection{}, err
+	}
+	if insp.IsFinalized {
+		return db.Inspection{}, apperror.Conflict("Inspection is finalized; reopen it before modifying")
 	}
 
 	params := db.UpdateInspectionParams{
@@ -97,6 +104,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateInspection
 		ReviewerID: dbutil.NullUUID(req.ReviewerID),
 		Notes:      dbutil.StrPtr(req.Notes),
 		Metadata:   dbutil.JSONBytes(req.Metadata),
+		Location:   dbutil.StrPtr(req.Location),
+		Latitude:   req.Latitude,
+		Longitude:  req.Longitude,
 	}
 	if req.Status != "" {
 		v := db.InspectionStatus(req.Status)
@@ -108,4 +118,45 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateInspection
 	}
 
 	return s.q.UpdateInspection(ctx, params)
+}
+
+// Finalize locks an inspection against further modification. Reviewers must
+// explicitly Reopen it before any further edit (declarations, violations, or
+// the inspection itself) is allowed.
+func (s *Service) Finalize(ctx context.Context, id uuid.UUID, finalizedByID string) (db.Inspection, error) {
+	if _, err := s.Ensure(ctx, id); err != nil {
+		return db.Inspection{}, err
+	}
+	insp, err := s.q.FinalizeInspection(ctx, db.FinalizeInspectionParams{ID: id, FinalizedByID: dbutil.NullUUID(finalizedByID)})
+	if err != nil {
+		return db.Inspection{}, apperror.Conflict("Inspection is already finalized")
+	}
+	return insp, nil
+}
+
+// Reopen clears the finalized lock, explicitly re-opening the inspection for
+// correction. Callers must audit-log this action.
+func (s *Service) Reopen(ctx context.Context, id uuid.UUID) (db.Inspection, error) {
+	if _, err := s.Ensure(ctx, id); err != nil {
+		return db.Inspection{}, err
+	}
+	insp, err := s.q.ReopenInspection(ctx, id)
+	if err != nil {
+		return db.Inspection{}, apperror.Conflict("Inspection is not finalized")
+	}
+	return insp, nil
+}
+
+// EnsureNotFinalized returns a Conflict error if the inspection is finalized.
+// Other modules (declarations, violations) call this before allowing an edit
+// on data that belongs to a finalized inspection.
+func (s *Service) EnsureNotFinalized(ctx context.Context, id uuid.UUID) error {
+	insp, err := s.Ensure(ctx, id)
+	if err != nil {
+		return err
+	}
+	if insp.IsFinalized {
+		return apperror.Conflict("Inspection is finalized; reopen it before modifying")
+	}
+	return nil
 }

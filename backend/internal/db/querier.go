@@ -49,6 +49,7 @@ type Querier interface {
 	DeleteRuleRequirements(ctx context.Context, ruleID uuid.UUID) error
 	DeleteUserRoles(ctx context.Context, userID uuid.UUID) error
 	DeleteViolationsByInspection(ctx context.Context, inspectionID uuid.UUID) error
+	FinalizeInspection(ctx context.Context, arg FinalizeInspectionParams) (Inspection, error)
 	GetCategoryByCode(ctx context.Context, code string) (ProductCategory, error)
 	GetCategoryByID(ctx context.Context, id uuid.UUID) (ProductCategory, error)
 	GetDataset(ctx context.Context, id uuid.UUID) (Dataset, error)
@@ -96,8 +97,10 @@ type Querier interface {
 	MarkReportGenerating(ctx context.Context, id uuid.UUID) error
 	MarkReportReady(ctx context.Context, arg MarkReportReadyParams) error
 	RecentInspections(ctx context.Context) ([]RecentInspectionsRow, error)
+	ReopenInspection(ctx context.Context, id uuid.UUID) (Inspection, error)
 	RevokeRefreshToken(ctx context.Context, jti string) error
 	RevokeRefreshTokenIfActive(ctx context.Context, jti string) error
+	SetInspectionImageScaleReference(ctx context.Context, arg SetInspectionImageScaleReferenceParams) error
 	SetInspectionOutcome(ctx context.Context, arg SetInspectionOutcomeParams) error
 	SetInspectionProcessing(ctx context.Context, id uuid.UUID) error
 	SetLastLogin(ctx context.Context, id uuid.UUID) error

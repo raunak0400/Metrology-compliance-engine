@@ -45,3 +45,15 @@ func TestNormalize_MapsUnknownFieldsToOther(t *testing.T) {
 		t.Fatalf("expected raw string preserved, got %v", n.NormalizedValue)
 	}
 }
+
+func TestNormalize_BestBeforeAndUseByDateAreDistinctFromExpiryDate(t *testing.T) {
+	for _, typ := range []string{"BEST_BEFORE", "USE_BY_DATE", "EXPIRY_DATE"} {
+		n := Normalize(field(typ, "12/2027"))
+		if n.Type != typ {
+			t.Fatalf("expected type %s to round-trip, got %s", typ, n.Type)
+		}
+		if n.NormalizedValue == nil || *n.NormalizedValue != "12/2027" {
+			t.Fatalf("expected normalized date value preserved for %s, got %v", typ, n.NormalizedValue)
+		}
+	}
+}

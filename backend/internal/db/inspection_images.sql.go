@@ -124,6 +124,20 @@ func (q *Queries) MarkInspectionImageProcessed(ctx context.Context, arg MarkInsp
 	return err
 }
 
+const setInspectionImageScaleReference = `-- name: SetInspectionImageScaleReference :exec
+UPDATE inspection_images SET scale_reference = $2, updated_at = now() WHERE id = $1
+`
+
+type SetInspectionImageScaleReferenceParams struct {
+	ID             uuid.UUID `json:"id"`
+	ScaleReference []byte    `json:"scale_reference"`
+}
+
+func (q *Queries) SetInspectionImageScaleReference(ctx context.Context, arg SetInspectionImageScaleReferenceParams) error {
+	_, err := q.db.Exec(ctx, setInspectionImageScaleReference, arg.ID, arg.ScaleReference)
+	return err
+}
+
 const updateInspectionImageStatus = `-- name: UpdateInspectionImageStatus :exec
 UPDATE inspection_images SET status = $2, updated_at = now() WHERE id = $1
 `

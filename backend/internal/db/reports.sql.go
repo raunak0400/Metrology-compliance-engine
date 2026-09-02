@@ -48,7 +48,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 
 const getInspectionForReport = `-- name: GetInspectionForReport :one
 SELECT
-  i.id, i.code, i.product_id, i.category_id, i.inspector_id, i.reviewer_id, i.status, i.outcome, i.source, i.notes, i.metadata, i.started_at, i.completed_at, i.created_at, i.updated_at,
+  i.id, i.code, i.product_id, i.category_id, i.inspector_id, i.reviewer_id, i.status, i.outcome, i.source, i.notes, i.metadata, i.started_at, i.completed_at, i.created_at, i.updated_at, i.location, i.latitude, i.longitude, i.is_finalized, i.finalized_at, i.finalized_by_id,
   p.name AS product_name,
   pc.name AS category_name,
   m.name AS manufacturer_name,
@@ -79,6 +79,12 @@ type GetInspectionForReportRow struct {
 	CompletedAt      *time.Time        `json:"completed_at"`
 	CreatedAt        time.Time         `json:"created_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
+	Location         *string           `json:"location"`
+	Latitude         *float64          `json:"latitude"`
+	Longitude        *float64          `json:"longitude"`
+	IsFinalized      bool              `json:"is_finalized"`
+	FinalizedAt      *time.Time        `json:"finalized_at"`
+	FinalizedByID    uuid.NullUUID     `json:"finalized_by_id"`
 	ProductName      *string           `json:"product_name"`
 	CategoryName     *string           `json:"category_name"`
 	ManufacturerName *string           `json:"manufacturer_name"`
@@ -107,6 +113,12 @@ func (q *Queries) GetInspectionForReport(ctx context.Context, id uuid.UUID) (Get
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
 		&i.ProductName,
 		&i.CategoryName,
 		&i.ManufacturerName,

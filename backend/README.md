@@ -36,7 +36,11 @@ MANUAL REVIEW            (low-confidence / ambiguous cases only)
 FINAL REPORT             (async, PDF/DOCX → object storage → signed URL)
 ```
 
-Outcomes: `COMPLIANT`, `NON_COMPLIANT`, `MANUAL_REVIEW`.
+Inspection outcomes: `COMPLIANT`, `NON_COMPLIANT`, `MANUAL_REVIEW`, `NOT_APPLICABLE`
+(no legal rules are mapped to the inspection's product category). Individual
+compliance-check results: `PASS`, `FAIL`, `WARNING` (a non-mandatory
+requirement failed — a soft signal, never a violation), `MANUAL_REVIEW`,
+`NOT_APPLICABLE`.
 
 ---
 
@@ -205,6 +209,13 @@ route table. All responses use a consistent envelope:
 { "success": false, "error": { "code": "VALIDATION_ERROR", "message": "…", "details": [] } }
 ```
 
+JSONB columns (`products.attributes`, `inspections.metadata`, `extracted_declarations.bbox`,
+`compliance_checks.details`, `audit_logs.old_state`/`new_state`, etc.) are
+generated as `encoding/json.RawMessage`, not plain `[]byte` — this matters if
+you ever touch `sqlc.yaml`'s `jsonb` override: a bare `[]byte` field gets
+silently base64-encoded by `encoding/json` instead of emitted as nested JSON,
+which would make every JSONB field in every API response unusable.
+
 ### Async processing flow
 
 Uploads and expensive work are **never** done synchronously in the request:
@@ -254,7 +265,20 @@ Low-confidence OCR and ambiguous measurement cases are routed to
 `MANUAL_REVIEW` and are **never** auto-converted into legal violations.
 Reviewers inspect the original/cropped image, OCR text and bounding boxes,
 edit extracted values (`PATCH /declarations/:id`), and confirm/reject
-violations (`PATCH /violations/:id`).
+violations (`PATCH /violations/:id`). Editing a declaration marks the
+inspection's compliance result stale by re-enqueuing a compliance evaluation
+(same queue a real recheck uses) — the prior checks/violations were computed
+against the old value.
+
+### Finalize / reopen
+
+`POST /inspections/:id/finalize` (permission `inspections:finalize`) locks an
+inspection: further `PATCH` on the inspection, its declarations, or its
+violations is rejected with `409 CONFLICT` until it's explicitly reopened via
+`POST /inspections/:id/reopen`. Both actions are audited
+(`internal/inspections/service.go` `Finalize`/`Reopen`/`EnsureNotFinalized`).
+This is the "explicit revision/reopen workflow" a finalized inspection
+requires before any further correction.
 
 ## Measurements
 
@@ -298,6 +322,31 @@ go test ./pkg/... ./cmd/migrate/...
 The `cmd/migrate` test additionally proves migrations apply cleanly to a
 fresh database, are idempotent on re-run, and roll back cleanly — it calls
 `Drop()` on the target database, so it must point at a scratch database.
+
+### Business-flow integration test
+
+`cmd/api/integration_test.go`'s `TestIntegration_FullBusinessFlow` drives the
+full stack through the real HTTP router (register → RBAC → products → legal
+rules → inspections with location/lat/lng → image upload to object storage →
+declaration normalization → the deterministic compliance engine, run inside a
+real transaction, producing PASS/WARNING/NOT_APPLICABLE → manual declaration
+correction and its re-evaluation trigger → evidence → audit log → the
+finalize/reopen workflow). It uses the same `TEST_*` variables as above (skips
+if unset) and seeds an ADMIN user by granting the role directly via
+`Queries.InsertUserRole` — run `go run ./cmd/seed` against the target database
+first so the `ADMIN` role exists:
+
+```bash
+go run ./cmd/seed   # once, against the TEST_DATABASE_URL database
+go test ./cmd/api/... -run TestIntegration_FullBusinessFlow -v
+```
+
+It does not start a worker process — scan/compliance processing that's
+normally async (`POST /inspections/:id/images`, `POST /inspections/:id/check`)
+is driven directly through the same exported service methods
+(`declarations.Service.PersistExtracted`, `compliance.Service.Run`) the worker
+itself calls, so the test stays deterministic without needing a live worker
+container.
 
 ---
 

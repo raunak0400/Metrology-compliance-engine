@@ -38,7 +38,11 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (db.ExtractedDeclaratio
 // Update is a reviewer edit. Records that a human corrected the value and by
 // whom, without discarding the original raw OCR value (RawValue is untouched).
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateDeclarationRequest, editedByID string) (db.ExtractedDeclaration, error) {
-	if _, err := s.Get(ctx, id); err != nil {
+	before, err := s.Get(ctx, id)
+	if err != nil {
+		return db.ExtractedDeclaration{}, err
+	}
+	if err := s.inspSvc.EnsureNotFinalized(ctx, before.InspectionID); err != nil {
 		return db.ExtractedDeclaration{}, err
 	}
 

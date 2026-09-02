@@ -83,7 +83,7 @@ func main() {
 	defer asynqClient.Close()
 
 	scanPipeline := scans.NewPipeline(queries, objectStorage, mlClient, mlRepo, declSvc, asynqClient)
-	complianceSvc := compliance.NewService(queries, asynqClient, inspSvc)
+	complianceSvc := compliance.NewService(queries, pool, asynqClient, inspSvc)
 	reportSvc := reports.NewService(queries, objectStorage, asynqClient, inspSvc)
 
 	mux := workers.NewMux(workers.Deps{

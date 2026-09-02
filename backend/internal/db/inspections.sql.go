@@ -41,9 +41,9 @@ func (q *Queries) CountInspections(ctx context.Context, arg CountInspectionsPara
 }
 
 const createInspection = `-- name: CreateInspection :one
-INSERT INTO inspections (code, product_id, category_id, inspector_id, source, notes, metadata)
-VALUES ($1, $3, $4, $2, $5, $6, $7)
-RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at
+INSERT INTO inspections (code, product_id, category_id, inspector_id, source, notes, metadata, location, latitude, longitude)
+VALUES ($1, $3, $4, $2, $5, $6, $7, $8, $9, $10)
+RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at, location, latitude, longitude, is_finalized, finalized_at, finalized_by_id
 `
 
 type CreateInspectionParams struct {
@@ -54,6 +54,9 @@ type CreateInspectionParams struct {
 	Source      *string       `json:"source"`
 	Notes       *string       `json:"notes"`
 	Metadata    []byte        `json:"metadata"`
+	Location    *string       `json:"location"`
+	Latitude    *float64      `json:"latitude"`
+	Longitude   *float64      `json:"longitude"`
 }
 
 func (q *Queries) CreateInspection(ctx context.Context, arg CreateInspectionParams) (Inspection, error) {
@@ -65,6 +68,9 @@ func (q *Queries) CreateInspection(ctx context.Context, arg CreateInspectionPara
 		arg.Source,
 		arg.Notes,
 		arg.Metadata,
+		arg.Location,
+		arg.Latitude,
+		arg.Longitude,
 	)
 	var i Inspection
 	err := row.Scan(
@@ -83,12 +89,62 @@ func (q *Queries) CreateInspection(ctx context.Context, arg CreateInspectionPara
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
+	)
+	return i, err
+}
+
+const finalizeInspection = `-- name: FinalizeInspection :one
+UPDATE inspections SET
+  is_finalized = true,
+  finalized_at = now(),
+  finalized_by_id = $2,
+  updated_at = now()
+WHERE id = $1 AND is_finalized = false
+RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at, location, latitude, longitude, is_finalized, finalized_at, finalized_by_id
+`
+
+type FinalizeInspectionParams struct {
+	ID            uuid.UUID     `json:"id"`
+	FinalizedByID uuid.NullUUID `json:"finalized_by_id"`
+}
+
+func (q *Queries) FinalizeInspection(ctx context.Context, arg FinalizeInspectionParams) (Inspection, error) {
+	row := q.db.QueryRow(ctx, finalizeInspection, arg.ID, arg.FinalizedByID)
+	var i Inspection
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.ProductID,
+		&i.CategoryID,
+		&i.InspectorID,
+		&i.ReviewerID,
+		&i.Status,
+		&i.Outcome,
+		&i.Source,
+		&i.Notes,
+		&i.Metadata,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
 	)
 	return i, err
 }
 
 const getInspection = `-- name: GetInspection :one
-SELECT id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at FROM inspections WHERE id = $1
+SELECT id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at, location, latitude, longitude, is_finalized, finalized_at, finalized_by_id FROM inspections WHERE id = $1
 `
 
 func (q *Queries) GetInspection(ctx context.Context, id uuid.UUID) (Inspection, error) {
@@ -110,13 +166,19 @@ func (q *Queries) GetInspection(ctx context.Context, id uuid.UUID) (Inspection, 
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
 	)
 	return i, err
 }
 
 const getInspectionDetail = `-- name: GetInspectionDetail :one
 SELECT
-  i.id, i.code, i.product_id, i.category_id, i.inspector_id, i.reviewer_id, i.status, i.outcome, i.source, i.notes, i.metadata, i.started_at, i.completed_at, i.created_at, i.updated_at,
+  i.id, i.code, i.product_id, i.category_id, i.inspector_id, i.reviewer_id, i.status, i.outcome, i.source, i.notes, i.metadata, i.started_at, i.completed_at, i.created_at, i.updated_at, i.location, i.latitude, i.longitude, i.is_finalized, i.finalized_at, i.finalized_by_id,
   p.name AS product_name,
   pc.name AS product_category_name,
   u1.full_name AS inspector_name, u1.email AS inspector_email,
@@ -149,6 +211,12 @@ type GetInspectionDetailRow struct {
 	CompletedAt         *time.Time        `json:"completed_at"`
 	CreatedAt           time.Time         `json:"created_at"`
 	UpdatedAt           time.Time         `json:"updated_at"`
+	Location            *string           `json:"location"`
+	Latitude            *float64          `json:"latitude"`
+	Longitude           *float64          `json:"longitude"`
+	IsFinalized         bool              `json:"is_finalized"`
+	FinalizedAt         *time.Time        `json:"finalized_at"`
+	FinalizedByID       uuid.NullUUID     `json:"finalized_by_id"`
 	ProductName         *string           `json:"product_name"`
 	ProductCategoryName *string           `json:"product_category_name"`
 	InspectorName       string            `json:"inspector_name"`
@@ -180,6 +248,12 @@ func (q *Queries) GetInspectionDetail(ctx context.Context, id uuid.UUID) (GetIns
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
 		&i.ProductName,
 		&i.ProductCategoryName,
 		&i.InspectorName,
@@ -196,7 +270,7 @@ func (q *Queries) GetInspectionDetail(ctx context.Context, id uuid.UUID) (GetIns
 
 const listInspections = `-- name: ListInspections :many
 SELECT
-  i.id, i.code, i.product_id, i.category_id, i.inspector_id, i.reviewer_id, i.status, i.outcome, i.source, i.notes, i.metadata, i.started_at, i.completed_at, i.created_at, i.updated_at,
+  i.id, i.code, i.product_id, i.category_id, i.inspector_id, i.reviewer_id, i.status, i.outcome, i.source, i.notes, i.metadata, i.started_at, i.completed_at, i.created_at, i.updated_at, i.location, i.latitude, i.longitude, i.is_finalized, i.finalized_at, i.finalized_by_id,
   p.name AS product_name,
   (SELECT count(*) FROM inspection_images img WHERE img.inspection_id = i.id) AS images_count,
   (SELECT count(*) FROM violations v WHERE v.inspection_id = i.id) AS violations_count,
@@ -237,6 +311,12 @@ type ListInspectionsRow struct {
 	CompletedAt       *time.Time        `json:"completed_at"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
+	Location          *string           `json:"location"`
+	Latitude          *float64          `json:"latitude"`
+	Longitude         *float64          `json:"longitude"`
+	IsFinalized       bool              `json:"is_finalized"`
+	FinalizedAt       *time.Time        `json:"finalized_at"`
+	FinalizedByID     uuid.NullUUID     `json:"finalized_by_id"`
 	ProductName       *string           `json:"product_name"`
 	ImagesCount       int64             `json:"images_count"`
 	ViolationsCount   int64             `json:"violations_count"`
@@ -275,6 +355,12 @@ func (q *Queries) ListInspections(ctx context.Context, arg ListInspectionsParams
 			&i.CompletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Location,
+			&i.Latitude,
+			&i.Longitude,
+			&i.IsFinalized,
+			&i.FinalizedAt,
+			&i.FinalizedByID,
 			&i.ProductName,
 			&i.ImagesCount,
 			&i.ViolationsCount,
@@ -288,6 +374,45 @@ func (q *Queries) ListInspections(ctx context.Context, arg ListInspectionsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const reopenInspection = `-- name: ReopenInspection :one
+UPDATE inspections SET
+  is_finalized = false,
+  finalized_at = NULL,
+  finalized_by_id = NULL,
+  updated_at = now()
+WHERE id = $1 AND is_finalized = true
+RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at, location, latitude, longitude, is_finalized, finalized_at, finalized_by_id
+`
+
+func (q *Queries) ReopenInspection(ctx context.Context, id uuid.UUID) (Inspection, error) {
+	row := q.db.QueryRow(ctx, reopenInspection, id)
+	var i Inspection
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.ProductID,
+		&i.CategoryID,
+		&i.InspectorID,
+		&i.ReviewerID,
+		&i.Status,
+		&i.Outcome,
+		&i.Source,
+		&i.Notes,
+		&i.Metadata,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
+	)
+	return i, err
 }
 
 const setInspectionOutcome = `-- name: SetInspectionOutcome :exec
@@ -321,9 +446,12 @@ UPDATE inspections SET
   reviewer_id = COALESCE($4, reviewer_id),
   notes = COALESCE($5, notes),
   metadata = COALESCE($6, metadata),
+  location = COALESCE($7, location),
+  latitude = COALESCE($8, latitude),
+  longitude = COALESCE($9, longitude),
   updated_at = now()
 WHERE id = $1
-RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at
+RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, outcome, source, notes, metadata, started_at, completed_at, created_at, updated_at, location, latitude, longitude, is_finalized, finalized_at, finalized_by_id
 `
 
 type UpdateInspectionParams struct {
@@ -333,6 +461,9 @@ type UpdateInspectionParams struct {
 	ReviewerID uuid.NullUUID      `json:"reviewer_id"`
 	Notes      *string            `json:"notes"`
 	Metadata   []byte             `json:"metadata"`
+	Location   *string            `json:"location"`
+	Latitude   *float64           `json:"latitude"`
+	Longitude  *float64           `json:"longitude"`
 }
 
 func (q *Queries) UpdateInspection(ctx context.Context, arg UpdateInspectionParams) (Inspection, error) {
@@ -343,6 +474,9 @@ func (q *Queries) UpdateInspection(ctx context.Context, arg UpdateInspectionPara
 		arg.ReviewerID,
 		arg.Notes,
 		arg.Metadata,
+		arg.Location,
+		arg.Latitude,
+		arg.Longitude,
 	)
 	var i Inspection
 	err := row.Scan(
@@ -361,6 +495,12 @@ func (q *Queries) UpdateInspection(ctx context.Context, arg UpdateInspectionPara
 		&i.CompletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Location,
+		&i.Latitude,
+		&i.Longitude,
+		&i.IsFinalized,
+		&i.FinalizedAt,
+		&i.FinalizedByID,
 	)
 	return i, err
 }

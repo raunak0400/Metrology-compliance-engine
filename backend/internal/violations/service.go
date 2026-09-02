@@ -38,7 +38,11 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (db.Violation, error) {
 // Records who acted. This is a human decision layered on top of the
 // deterministic engine output — it does not alter the original check.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateViolationRequest, resolvedByID string) (db.Violation, error) {
-	if _, err := s.Get(ctx, id); err != nil {
+	v, err := s.Get(ctx, id)
+	if err != nil {
+		return db.Violation{}, err
+	}
+	if err := s.inspSvc.EnsureNotFinalized(ctx, v.InspectionID); err != nil {
 		return db.Violation{}, err
 	}
 

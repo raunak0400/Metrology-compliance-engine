@@ -98,6 +98,12 @@ def extract_fields(ref: ImageRef):
              "bbox": {"x": 40, "y": 120, "width": 220, "height": 30}},
             {"field": "NET_QUANTITY", "rawValue": "500 g", "confidence": 0.90,
              "bbox": {"x": 40, "y": 160, "width": 180, "height": 28}},
+            {"field": "MANUFACTURER", "rawValue": "Example Foods Pvt Ltd, Industrial Area, Pune, India", "confidence": 0.85,
+             "bbox": {"x": 40, "y": 200, "width": 260, "height": 26}},
+            {"field": "CONSUMER_CARE", "rawValue": "care@example-foods.example, 1800-000-0000", "confidence": 0.82,
+             "bbox": {"x": 40, "y": 230, "width": 260, "height": 24}},
+            {"field": "MANUFACTURE_DATE", "rawValue": "01/2026", "confidence": 0.88,
+             "bbox": {"x": 40, "y": 258, "width": 140, "height": 22}},
         ],
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
@@ -105,7 +111,14 @@ def extract_fields(ref: ImageRef):
 
 @app.post("/ml/analyze")
 def analyze(ref: ImageRef):
-    """Combined pipeline output: OCR + regions + fields in one call."""
+    """Combined pipeline output: the consolidated analysis JSON contract.
+
+    Real/OCR/detection/field-extraction sub-results plus the broader
+    per-package analysis (category, package geometry, panel/text analysis,
+    scale reference for pixel->mm conversion). Deterministic mock values only
+    — no computer vision actually runs here. Never includes image bytes; the
+    image is already in S3/MinIO (see ref.storageKey / ref.imageUrl).
+    """
     return {
         "inspectionId": ref.inspectionId,
         "imageId": ref.imageId,
@@ -114,4 +127,21 @@ def analyze(ref: ImageRef):
         "regions": detect_label(ref)["regions"],
         "fields": extract_fields(ref)["fields"],
         "createdAt": datetime.now(timezone.utc).isoformat(),
+        "productId": None,
+        "category": "GENERAL",
+        "saleChannel": "RETAIL",
+        "netWeightKg": 0.5,
+        "isImported": False,
+        "packageShape": "RECTANGULAR_BOX",
+        "packageSurfaceType": "PRINTED_PLASTIC_FILM",
+        # A 10px/mm reference (e.g. a printed calibration card in frame) —
+        # lets the Go measurement package convert declaration bbox heights to
+        # real-world mm instead of reporting hasValidScale=false.
+        "scaleReferenceMm": {"pxPerMm": 10.0, "source": "REFERENCE_CARD"},
+        "panelMetadata": {"panelType": "PRINCIPAL_DISPLAY_PANEL", "areaCm2": 48.0},
+        "panelAnalysis": {},
+        "textOverlapAnalysis": {"overlapsDetected": False},
+        "extractedTags": ["prepackaged", "retail-sale"],
+        "textMeasurements": {},
+        "extraFields": {},
     }

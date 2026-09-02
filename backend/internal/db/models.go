@@ -114,6 +114,7 @@ const (
 	ComplianceStatusFAIL          ComplianceStatus = "FAIL"
 	ComplianceStatusMANUALREVIEW  ComplianceStatus = "MANUAL_REVIEW"
 	ComplianceStatusNOTAPPLICABLE ComplianceStatus = "NOT_APPLICABLE"
+	ComplianceStatusWARNING       ComplianceStatus = "WARNING"
 )
 
 func (e *ComplianceStatus) Scan(src interface{}) error {
@@ -255,6 +256,8 @@ const (
 	DeclarationTypeUNITSALEPRICE   DeclarationType = "UNIT_SALE_PRICE"
 	DeclarationTypeGENERICNAME     DeclarationType = "GENERIC_NAME"
 	DeclarationTypeOTHER           DeclarationType = "OTHER"
+	DeclarationTypeBESTBEFORE      DeclarationType = "BEST_BEFORE"
+	DeclarationTypeUSEBYDATE       DeclarationType = "USE_BY_DATE"
 )
 
 func (e *DeclarationType) Scan(src interface{}) error {
@@ -429,10 +432,11 @@ func (ns NullImageProcessingStatus) Value() (driver.Value, error) {
 type InspectionOutcome string
 
 const (
-	InspectionOutcomePENDING      InspectionOutcome = "PENDING"
-	InspectionOutcomeCOMPLIANT    InspectionOutcome = "COMPLIANT"
-	InspectionOutcomeNONCOMPLIANT InspectionOutcome = "NON_COMPLIANT"
-	InspectionOutcomeMANUALREVIEW InspectionOutcome = "MANUAL_REVIEW"
+	InspectionOutcomePENDING       InspectionOutcome = "PENDING"
+	InspectionOutcomeCOMPLIANT     InspectionOutcome = "COMPLIANT"
+	InspectionOutcomeNONCOMPLIANT  InspectionOutcome = "NON_COMPLIANT"
+	InspectionOutcomeMANUALREVIEW  InspectionOutcome = "MANUAL_REVIEW"
+	InspectionOutcomeNOTAPPLICABLE InspectionOutcome = "NOT_APPLICABLE"
 )
 
 func (e *InspectionOutcome) Scan(src interface{}) error {
@@ -990,21 +994,27 @@ type ExtractedDeclaration struct {
 }
 
 type Inspection struct {
-	ID          uuid.UUID         `json:"id"`
-	Code        string            `json:"code"`
-	ProductID   uuid.NullUUID     `json:"product_id"`
-	CategoryID  uuid.NullUUID     `json:"category_id"`
-	InspectorID uuid.UUID         `json:"inspector_id"`
-	ReviewerID  uuid.NullUUID     `json:"reviewer_id"`
-	Status      InspectionStatus  `json:"status"`
-	Outcome     InspectionOutcome `json:"outcome"`
-	Source      *string           `json:"source"`
-	Notes       *string           `json:"notes"`
-	Metadata    []byte            `json:"metadata"`
-	StartedAt   *time.Time        `json:"started_at"`
-	CompletedAt *time.Time        `json:"completed_at"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID            uuid.UUID         `json:"id"`
+	Code          string            `json:"code"`
+	ProductID     uuid.NullUUID     `json:"product_id"`
+	CategoryID    uuid.NullUUID     `json:"category_id"`
+	InspectorID   uuid.UUID         `json:"inspector_id"`
+	ReviewerID    uuid.NullUUID     `json:"reviewer_id"`
+	Status        InspectionStatus  `json:"status"`
+	Outcome       InspectionOutcome `json:"outcome"`
+	Source        *string           `json:"source"`
+	Notes         *string           `json:"notes"`
+	Metadata      []byte            `json:"metadata"`
+	StartedAt     *time.Time        `json:"started_at"`
+	CompletedAt   *time.Time        `json:"completed_at"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+	Location      *string           `json:"location"`
+	Latitude      *float64          `json:"latitude"`
+	Longitude     *float64          `json:"longitude"`
+	IsFinalized   bool              `json:"is_finalized"`
+	FinalizedAt   *time.Time        `json:"finalized_at"`
+	FinalizedByID uuid.NullUUID     `json:"finalized_by_id"`
 }
 
 type InspectionImage struct {

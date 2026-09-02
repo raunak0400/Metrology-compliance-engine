@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/raunak0400/metrology-backend/internal/compliance/engine"
 	"github.com/raunak0400/metrology-backend/internal/constants"
 	"github.com/raunak0400/metrology-backend/internal/db"
@@ -28,12 +29,13 @@ import (
 
 type Service struct {
 	q       *db.Queries
+	pool    *pgxpool.Pool
 	asynq   *asynq.Client
 	inspSvc *inspections.Service
 }
 
-func NewService(q *db.Queries, asynqClient *asynq.Client, inspSvc *inspections.Service) *Service {
-	return &Service{q: q, asynq: asynqClient, inspSvc: inspSvc}
+func NewService(q *db.Queries, pool *pgxpool.Pool, asynqClient *asynq.Client, inspSvc *inspections.Service) *Service {
+	return &Service{q: q, pool: pool, asynq: asynqClient, inspSvc: inspSvc}
 }
 
 // loadApplicableRules loads active legal rules applicable to a category
@@ -180,12 +182,22 @@ type checksDetails struct {
 }
 
 // persistResults persists checks + violations and updates the inspection
-// outcome. Idempotent re-run: clears the prior evaluation first.
+// outcome inside a single PostgreSQL transaction — either the full evaluation
+// (checks, violations, outcome) lands, or none of it does, so a mid-write
+// failure never leaves the inspection with a stale/partial result. Idempotent
+// re-run: clears the prior evaluation first.
 func (s *Service) persistResults(ctx context.Context, inspectionID uuid.UUID, checks []engine.CheckResult, outcome engine.Outcome) error {
-	if err := s.q.DeleteViolationsByInspection(ctx, inspectionID); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	if err := s.q.DeleteComplianceChecksByInspection(ctx, inspectionID); err != nil {
+	defer tx.Rollback(ctx)
+	q := s.q.WithTx(tx)
+
+	if err := q.DeleteViolationsByInspection(ctx, inspectionID); err != nil {
+		return err
+	}
+	if err := q.DeleteComplianceChecksByInspection(ctx, inspectionID); err != nil {
 		return err
 	}
 
@@ -203,7 +215,7 @@ func (s *Service) persistResults(ctx context.Context, inspectionID uuid.UUID, ch
 		}
 		details := dbutil.JSONBytes(checksDetails{RuleCode: c.RuleCode, RequirementKey: c.RequirementKey})
 
-		check, err := s.q.CreateComplianceCheck(ctx, db.CreateComplianceCheckParams{
+		check, err := q.CreateComplianceCheck(ctx, db.CreateComplianceCheckParams{
 			InspectionID: inspectionID, RuleID: ruleID,
 			RequirementID: uuid.NullUUID{UUID: requirementID, Valid: requirementID != uuid.Nil},
 			DeclarationID: declarationID, Status: db.ComplianceStatus(c.Status),
@@ -214,9 +226,10 @@ func (s *Service) persistResults(ctx context.Context, inspectionID uuid.UUID, ch
 			return err
 		}
 
-		// Only definite failures become violations. Manual-review checks do NOT.
+		// Only definite failures of a MANDATORY requirement become violations.
+		// WARNING (non-mandatory fail) and MANUAL_REVIEW do NOT.
 		if c.Status == engine.StatusFail {
-			if _, err := s.q.CreateViolation(ctx, db.CreateViolationParams{
+			if _, err := q.CreateViolation(ctx, db.CreateViolationParams{
 				InspectionID: inspectionID, RuleID: uuid.NullUUID{UUID: ruleID, Valid: true},
 				CheckID: uuid.NullUUID{UUID: check.ID, Valid: true}, Severity: db.ViolationSeverity(c.Severity),
 				Title: c.Title, Reason: c.Reason, LegalReference: c.LegalReference,
@@ -230,9 +243,13 @@ func (s *Service) persistResults(ctx context.Context, inspectionID uuid.UUID, ch
 	if outcome == engine.OutcomeManualReview {
 		status = db.InspectionStatusAWAITINGREVIEW
 	}
-	return s.q.SetInspectionOutcome(ctx, db.SetInspectionOutcomeParams{
+	if err := q.SetInspectionOutcome(ctx, db.SetInspectionOutcomeParams{
 		ID: inspectionID, Status: status, Outcome: db.InspectionOutcome(outcome),
-	})
+	}); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 // Enqueue schedules a compliance evaluation on the compliance-check queue. The

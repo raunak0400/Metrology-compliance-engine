@@ -71,6 +71,10 @@ func Evaluate(rules []Rule, ctx Context) Output {
 				}
 				combined := base + " (low OCR confidence " + formatConfidence(*declaration.Confidence) + ")"
 				reason = &combined
+			case !req.IsMandatory:
+				// A non-mandatory requirement failing is a soft signal, not a
+				// legal violation — flag it without creating a violation record.
+				status = StatusWarning
 			default:
 				status = StatusFail
 			}
@@ -116,15 +120,21 @@ func Evaluate(rules []Rule, ctx Context) Output {
 	return Output{Checks: checks, Outcome: deriveOutcome(rules, checks)}
 }
 
-// deriveOutcome: any manual review dominates; else any fail => non-compliant.
+// deriveOutcome: no applicable rules => not applicable; any manual review
+// dominates; else any fail => non-compliant.
 func deriveOutcome(rules []Rule, checks []CheckResult) Outcome {
 	mandatory := make(map[string]bool)
+	hasAnyRequirement := false
 	for _, r := range rules {
 		for _, req := range r.Requirements {
+			hasAnyRequirement = true
 			if req.IsMandatory {
 				mandatory[req.ID] = true
 			}
 		}
+	}
+	if !hasAnyRequirement {
+		return OutcomeNotApplicable
 	}
 
 	hasManualReview := false

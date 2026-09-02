@@ -75,6 +75,41 @@ func TestManualReview_LowConfidenceFailingCheck(t *testing.T) {
 	}
 }
 
+func TestWarning_NonMandatoryRequirementFails(t *testing.T) {
+	rule := mrpRule()
+	rule.Requirements = []Requirement{
+		{
+			ID:              "req-optional-note",
+			Key:             "declaration.NET_QUANTITY.recommendedFormat",
+			DeclarationType: str("NET_QUANTITY"),
+			Operator:        OpRegexMatch,
+			Expected:        map[string]interface{}{"pattern": `^\d+\s?(g|kg|ml|l)$`},
+			Message:         str("Recommended format not followed"),
+			IsMandatory:     false,
+		},
+	}
+	out := Evaluate([]Rule{rule}, baseCtx([]Declaration{
+		{DeclarationID: "d1", Type: "NET_QUANTITY", NormalizedValue: str("about 500 grams"), Confidence: f64(0.95)},
+	}))
+	if out.Checks[0].Status != StatusWarning {
+		t.Fatalf("expected WARNING for a failing non-mandatory requirement, got %s", out.Checks[0].Status)
+	}
+	// A WARNING must never dominate the outcome the way a mandatory FAIL does.
+	if out.Outcome != OutcomeCompliant {
+		t.Fatalf("expected COMPLIANT outcome (non-mandatory warnings don't fail the inspection), got %s", out.Outcome)
+	}
+}
+
+func TestNotApplicable_WhenNoRulesApply(t *testing.T) {
+	out := Evaluate(nil, baseCtx(nil))
+	if out.Outcome != OutcomeNotApplicable {
+		t.Fatalf("expected NOT_APPLICABLE when no rules apply, got %s", out.Outcome)
+	}
+	if len(out.Checks) != 0 {
+		t.Fatalf("expected zero checks when no rules apply, got %d", len(out.Checks))
+	}
+}
+
 func TestManualReview_MinTextHeightWithoutValidScale(t *testing.T) {
 	rule := mrpRule()
 	rule.Requirements = []Requirement{
