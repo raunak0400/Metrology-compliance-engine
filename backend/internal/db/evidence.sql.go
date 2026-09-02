@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -18,15 +19,15 @@ RETURNING id, inspection_id, violation_id, image_id, type, storage_key, bbox, ca
 `
 
 type CreateEvidenceParams struct {
-	InspectionID uuid.UUID     `json:"inspection_id"`
-	Type         EvidenceType  `json:"type"`
-	ViolationID  uuid.NullUUID `json:"violation_id"`
-	ImageID      uuid.NullUUID `json:"image_id"`
-	StorageKey   *string       `json:"storage_key"`
-	Bbox         []byte        `json:"bbox"`
-	Caption      *string       `json:"caption"`
-	Metadata     []byte        `json:"metadata"`
-	CreatedByID  uuid.NullUUID `json:"created_by_id"`
+	InspectionID uuid.UUID       `json:"inspection_id"`
+	Type         EvidenceType    `json:"type"`
+	ViolationID  uuid.NullUUID   `json:"violation_id"`
+	ImageID      uuid.NullUUID   `json:"image_id"`
+	StorageKey   *string         `json:"storage_key"`
+	Bbox         json.RawMessage `json:"bbox"`
+	Caption      *string         `json:"caption"`
+	Metadata     json.RawMessage `json:"metadata"`
+	CreatedByID  uuid.NullUUID   `json:"created_by_id"`
 }
 
 func (q *Queries) CreateEvidence(ctx context.Context, arg CreateEvidenceParams) (Evidence, error) {

@@ -27,11 +27,17 @@ sql:
           # bare []byte field, which would turn every JSONB column into an
           # unusable base64 string in API responses instead of nested JSON.
           # json.RawMessage's MarshalJSON/UnmarshalJSON pass the bytes through
-          # as-is. Same underlying type as []byte, so dbutil.JSONBytes and
-          # every existing json.Unmarshal(x.Field, ...) call site still work
-          # unchanged (Go assignability: one side unnamed = no conversion needed).
+          # as-is (and a nil RawMessage marshals to JSON `null`, so no pointer
+          # variant is needed for nullable columns — every jsonb column in
+          # this schema is nullable, hence both entries below). Same
+          # underlying type as []byte, so dbutil.JSONBytes and every existing
+          # json.Unmarshal(x.Field, ...) call site still work unchanged (Go
+          # assignability: one side unnamed = no conversion needed).
           - db_type: "jsonb"
-            go_type: { type: "encoding/json.RawMessage" }
+            go_type: "encoding/json.RawMessage"
+          - db_type: "jsonb"
+            go_type: "encoding/json.RawMessage"
+            nullable: true
           - db_type: "numeric"
             go_type: "float64"
           - db_type: "numeric"

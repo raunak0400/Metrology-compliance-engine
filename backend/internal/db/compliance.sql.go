@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,7 +36,7 @@ type CreateComplianceCheckParams struct {
 	ExpectedValue        *string          `json:"expected_value"`
 	Reason               *string          `json:"reason"`
 	Confidence           *float64         `json:"confidence"`
-	Details              []byte           `json:"details"`
+	Details              json.RawMessage  `json:"details"`
 }
 
 func (q *Queries) CreateComplianceCheck(ctx context.Context, arg CreateComplianceCheckParams) (ComplianceCheck, error) {
@@ -187,7 +188,7 @@ type ListComplianceChecksByInspectionRow struct {
 	Reason               *string          `json:"reason"`
 	Confidence           *float64         `json:"confidence"`
 	RequiresManualReview bool             `json:"requires_manual_review"`
-	Details              []byte           `json:"details"`
+	Details              json.RawMessage  `json:"details"`
 	EvaluatedAt          time.Time        `json:"evaluated_at"`
 	CreatedAt            time.Time        `json:"created_at"`
 	RuleCode             string           `json:"rule_code"`

@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,16 +52,16 @@ RETURNING id, name, sku, brand, barcode, category_id, manufacturer_id, net_quant
 `
 
 type CreateProductParams struct {
-	Name                string         `json:"name"`
-	CategoryID          uuid.UUID      `json:"category_id"`
-	Sku                 *string        `json:"sku"`
-	Brand               *string        `json:"brand"`
-	Barcode             *string        `json:"barcode"`
-	ManufacturerID      uuid.NullUUID  `json:"manufacturer_id"`
-	NetQuantityDeclared *string        `json:"net_quantity_declared"`
-	MrpDeclared         pgtype.Numeric `json:"mrp_declared"`
-	Attributes          []byte         `json:"attributes"`
-	CreatedByID         uuid.NullUUID  `json:"created_by_id"`
+	Name                string          `json:"name"`
+	CategoryID          uuid.UUID       `json:"category_id"`
+	Sku                 *string         `json:"sku"`
+	Brand               *string         `json:"brand"`
+	Barcode             *string         `json:"barcode"`
+	ManufacturerID      uuid.NullUUID   `json:"manufacturer_id"`
+	NetQuantityDeclared *string         `json:"net_quantity_declared"`
+	MrpDeclared         pgtype.Numeric  `json:"mrp_declared"`
+	Attributes          json.RawMessage `json:"attributes"`
+	CreatedByID         uuid.NullUUID   `json:"created_by_id"`
 }
 
 func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
@@ -145,23 +146,23 @@ WHERE p.id = $1
 `
 
 type GetProductByIDRow struct {
-	ID                  uuid.UUID      `json:"id"`
-	Name                string         `json:"name"`
-	Sku                 *string        `json:"sku"`
-	Brand               *string        `json:"brand"`
-	Barcode             *string        `json:"barcode"`
-	CategoryID          uuid.UUID      `json:"category_id"`
-	ManufacturerID      uuid.NullUUID  `json:"manufacturer_id"`
-	NetQuantityDeclared *string        `json:"net_quantity_declared"`
-	MrpDeclared         pgtype.Numeric `json:"mrp_declared"`
-	Attributes          []byte         `json:"attributes"`
-	CreatedByID         uuid.NullUUID  `json:"created_by_id"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
-	CategoryName        string         `json:"category_name"`
-	CategoryCode        string         `json:"category_code"`
-	ManufacturerName    *string        `json:"manufacturer_name"`
-	ManufacturerCountry *string        `json:"manufacturer_country"`
+	ID                  uuid.UUID       `json:"id"`
+	Name                string          `json:"name"`
+	Sku                 *string         `json:"sku"`
+	Brand               *string         `json:"brand"`
+	Barcode             *string         `json:"barcode"`
+	CategoryID          uuid.UUID       `json:"category_id"`
+	ManufacturerID      uuid.NullUUID   `json:"manufacturer_id"`
+	NetQuantityDeclared *string         `json:"net_quantity_declared"`
+	MrpDeclared         pgtype.Numeric  `json:"mrp_declared"`
+	Attributes          json.RawMessage `json:"attributes"`
+	CreatedByID         uuid.NullUUID   `json:"created_by_id"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
+	CategoryName        string          `json:"category_name"`
+	CategoryCode        string          `json:"category_code"`
+	ManufacturerName    *string         `json:"manufacturer_name"`
+	ManufacturerCountry *string         `json:"manufacturer_country"`
 }
 
 func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (GetProductByIDRow, error) {
@@ -219,23 +220,23 @@ type ListProductsParams struct {
 }
 
 type ListProductsRow struct {
-	ID                  uuid.UUID      `json:"id"`
-	Name                string         `json:"name"`
-	Sku                 *string        `json:"sku"`
-	Brand               *string        `json:"brand"`
-	Barcode             *string        `json:"barcode"`
-	CategoryID          uuid.UUID      `json:"category_id"`
-	ManufacturerID      uuid.NullUUID  `json:"manufacturer_id"`
-	NetQuantityDeclared *string        `json:"net_quantity_declared"`
-	MrpDeclared         pgtype.Numeric `json:"mrp_declared"`
-	Attributes          []byte         `json:"attributes"`
-	CreatedByID         uuid.NullUUID  `json:"created_by_id"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
-	CategoryName        string         `json:"category_name"`
-	CategoryCode        string         `json:"category_code"`
-	ManufacturerName    *string        `json:"manufacturer_name"`
-	ManufacturerCountry *string        `json:"manufacturer_country"`
+	ID                  uuid.UUID       `json:"id"`
+	Name                string          `json:"name"`
+	Sku                 *string         `json:"sku"`
+	Brand               *string         `json:"brand"`
+	Barcode             *string         `json:"barcode"`
+	CategoryID          uuid.UUID       `json:"category_id"`
+	ManufacturerID      uuid.NullUUID   `json:"manufacturer_id"`
+	NetQuantityDeclared *string         `json:"net_quantity_declared"`
+	MrpDeclared         pgtype.Numeric  `json:"mrp_declared"`
+	Attributes          json.RawMessage `json:"attributes"`
+	CreatedByID         uuid.NullUUID   `json:"created_by_id"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
+	CategoryName        string          `json:"category_name"`
+	CategoryCode        string          `json:"category_code"`
+	ManufacturerName    *string         `json:"manufacturer_name"`
+	ManufacturerCountry *string         `json:"manufacturer_country"`
 }
 
 func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]ListProductsRow, error) {
@@ -299,16 +300,16 @@ RETURNING id, name, sku, brand, barcode, category_id, manufacturer_id, net_quant
 `
 
 type UpdateProductParams struct {
-	ID                  uuid.UUID      `json:"id"`
-	Name                *string        `json:"name"`
-	Sku                 *string        `json:"sku"`
-	Brand               *string        `json:"brand"`
-	Barcode             *string        `json:"barcode"`
-	CategoryID          uuid.NullUUID  `json:"category_id"`
-	ManufacturerID      uuid.NullUUID  `json:"manufacturer_id"`
-	NetQuantityDeclared *string        `json:"net_quantity_declared"`
-	MrpDeclared         pgtype.Numeric `json:"mrp_declared"`
-	Attributes          []byte         `json:"attributes"`
+	ID                  uuid.UUID       `json:"id"`
+	Name                *string         `json:"name"`
+	Sku                 *string         `json:"sku"`
+	Brand               *string         `json:"brand"`
+	Barcode             *string         `json:"barcode"`
+	CategoryID          uuid.NullUUID   `json:"category_id"`
+	ManufacturerID      uuid.NullUUID   `json:"manufacturer_id"`
+	NetQuantityDeclared *string         `json:"net_quantity_declared"`
+	MrpDeclared         pgtype.Numeric  `json:"mrp_declared"`
+	Attributes          json.RawMessage `json:"attributes"`
 }
 
 func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {

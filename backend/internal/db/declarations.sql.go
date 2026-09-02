@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -33,7 +34,7 @@ type CreateDeclarationParams struct {
 	Unit            *string           `json:"unit"`
 	NumericValue    pgtype.Numeric    `json:"numeric_value"`
 	Confidence      *float64          `json:"confidence"`
-	Bbox            []byte            `json:"bbox"`
+	Bbox            json.RawMessage   `json:"bbox"`
 	MongoRefID      *string           `json:"mongo_ref_id"`
 }
 
@@ -170,8 +171,8 @@ WHERE d.inspection_id = $1
 type ListDeclarationsWithScaleByInspectionRow struct {
 	ID             uuid.UUID       `json:"id"`
 	Type           DeclarationType `json:"type"`
-	Bbox           []byte          `json:"bbox"`
-	ScaleReference []byte          `json:"scale_reference"`
+	Bbox           json.RawMessage `json:"bbox"`
+	ScaleReference json.RawMessage `json:"scale_reference"`
 }
 
 func (q *Queries) ListDeclarationsWithScaleByInspection(ctx context.Context, inspectionID uuid.UUID) ([]ListDeclarationsWithScaleByInspectionRow, error) {

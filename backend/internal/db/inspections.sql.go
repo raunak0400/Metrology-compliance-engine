@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,16 +48,16 @@ RETURNING id, code, product_id, category_id, inspector_id, reviewer_id, status, 
 `
 
 type CreateInspectionParams struct {
-	Code        string        `json:"code"`
-	InspectorID uuid.UUID     `json:"inspector_id"`
-	ProductID   uuid.NullUUID `json:"product_id"`
-	CategoryID  uuid.NullUUID `json:"category_id"`
-	Source      *string       `json:"source"`
-	Notes       *string       `json:"notes"`
-	Metadata    []byte        `json:"metadata"`
-	Location    *string       `json:"location"`
-	Latitude    *float64      `json:"latitude"`
-	Longitude   *float64      `json:"longitude"`
+	Code        string          `json:"code"`
+	InspectorID uuid.UUID       `json:"inspector_id"`
+	ProductID   uuid.NullUUID   `json:"product_id"`
+	CategoryID  uuid.NullUUID   `json:"category_id"`
+	Source      *string         `json:"source"`
+	Notes       *string         `json:"notes"`
+	Metadata    json.RawMessage `json:"metadata"`
+	Location    *string         `json:"location"`
+	Latitude    *float64        `json:"latitude"`
+	Longitude   *float64        `json:"longitude"`
 }
 
 func (q *Queries) CreateInspection(ctx context.Context, arg CreateInspectionParams) (Inspection, error) {
@@ -206,7 +207,7 @@ type GetInspectionDetailRow struct {
 	Outcome             InspectionOutcome `json:"outcome"`
 	Source              *string           `json:"source"`
 	Notes               *string           `json:"notes"`
-	Metadata            []byte            `json:"metadata"`
+	Metadata            json.RawMessage   `json:"metadata"`
 	StartedAt           *time.Time        `json:"started_at"`
 	CompletedAt         *time.Time        `json:"completed_at"`
 	CreatedAt           time.Time         `json:"created_at"`
@@ -306,7 +307,7 @@ type ListInspectionsRow struct {
 	Outcome           InspectionOutcome `json:"outcome"`
 	Source            *string           `json:"source"`
 	Notes             *string           `json:"notes"`
-	Metadata          []byte            `json:"metadata"`
+	Metadata          json.RawMessage   `json:"metadata"`
 	StartedAt         *time.Time        `json:"started_at"`
 	CompletedAt       *time.Time        `json:"completed_at"`
 	CreatedAt         time.Time         `json:"created_at"`
@@ -460,7 +461,7 @@ type UpdateInspectionParams struct {
 	Outcome    *InspectionOutcome `json:"outcome"`
 	ReviewerID uuid.NullUUID      `json:"reviewer_id"`
 	Notes      *string            `json:"notes"`
-	Metadata   []byte             `json:"metadata"`
+	Metadata   json.RawMessage    `json:"metadata"`
 	Location   *string            `json:"location"`
 	Latitude   *float64           `json:"latitude"`
 	Longitude  *float64           `json:"longitude"`

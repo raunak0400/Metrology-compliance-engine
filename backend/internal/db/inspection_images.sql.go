@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -129,8 +130,8 @@ UPDATE inspection_images SET scale_reference = $2, updated_at = now() WHERE id =
 `
 
 type SetInspectionImageScaleReferenceParams struct {
-	ID             uuid.UUID `json:"id"`
-	ScaleReference []byte    `json:"scale_reference"`
+	ID             uuid.UUID       `json:"id"`
+	ScaleReference json.RawMessage `json:"scale_reference"`
 }
 
 func (q *Queries) SetInspectionImageScaleReference(ctx context.Context, arg SetInspectionImageScaleReferenceParams) error {

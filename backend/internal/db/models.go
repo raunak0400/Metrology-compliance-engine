@@ -6,6 +6,7 @@ package db
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -880,17 +881,17 @@ func (ns NullViolationStatus) Value() (driver.Value, error) {
 }
 
 type AuditLog struct {
-	ID         uuid.UUID     `json:"id"`
-	ActorID    uuid.NullUUID `json:"actor_id"`
-	Action     AuditAction   `json:"action"`
-	EntityType string        `json:"entity_type"`
-	EntityID   *string       `json:"entity_id"`
-	OldState   []byte        `json:"old_state"`
-	NewState   []byte        `json:"new_state"`
-	Ip         *string       `json:"ip"`
-	UserAgent  *string       `json:"user_agent"`
-	RequestID  *string       `json:"request_id"`
-	CreatedAt  time.Time     `json:"created_at"`
+	ID         uuid.UUID       `json:"id"`
+	ActorID    uuid.NullUUID   `json:"actor_id"`
+	Action     AuditAction     `json:"action"`
+	EntityType string          `json:"entity_type"`
+	EntityID   *string         `json:"entity_id"`
+	OldState   json.RawMessage `json:"old_state"`
+	NewState   json.RawMessage `json:"new_state"`
+	Ip         *string         `json:"ip"`
+	UserAgent  *string         `json:"user_agent"`
+	RequestID  *string         `json:"request_id"`
+	CreatedAt  time.Time       `json:"created_at"`
 }
 
 type ComplianceCheck struct {
@@ -905,7 +906,7 @@ type ComplianceCheck struct {
 	Reason               *string          `json:"reason"`
 	Confidence           *float64         `json:"confidence"`
 	RequiresManualReview bool             `json:"requires_manual_review"`
-	Details              []byte           `json:"details"`
+	Details              json.RawMessage  `json:"details"`
 	EvaluatedAt          time.Time        `json:"evaluated_at"`
 	CreatedAt            time.Time        `json:"created_at"`
 }
@@ -927,11 +928,11 @@ type DatasetAnnotation struct {
 	AnnotatorID         uuid.NullUUID    `json:"annotator_id"`
 	FieldLabel          *string          `json:"field_label"`
 	ClassificationLabel *string          `json:"classification_label"`
-	Bbox                []byte           `json:"bbox"`
+	Bbox                json.RawMessage  `json:"bbox"`
 	Value               *string          `json:"value"`
 	Confidence          *float64         `json:"confidence"`
 	Status              AnnotationStatus `json:"status"`
-	Metadata            []byte           `json:"metadata"`
+	Metadata            json.RawMessage  `json:"metadata"`
 	CreatedAt           time.Time        `json:"created_at"`
 	UpdatedAt           time.Time        `json:"updated_at"`
 }
@@ -945,7 +946,7 @@ type DatasetItem struct {
 	MimeType         *string          `json:"mime_type"`
 	Split            DatasetSplit     `json:"split"`
 	AnnotationStatus AnnotationStatus `json:"annotation_status"`
-	Metadata         []byte           `json:"metadata"`
+	Metadata         json.RawMessage  `json:"metadata"`
 	CreatedAt        time.Time        `json:"created_at"`
 	UpdatedAt        time.Time        `json:"updated_at"`
 }
@@ -960,17 +961,17 @@ type DatasetVersion struct {
 }
 
 type Evidence struct {
-	ID           uuid.UUID     `json:"id"`
-	InspectionID uuid.UUID     `json:"inspection_id"`
-	ViolationID  uuid.NullUUID `json:"violation_id"`
-	ImageID      uuid.NullUUID `json:"image_id"`
-	Type         EvidenceType  `json:"type"`
-	StorageKey   *string       `json:"storage_key"`
-	Bbox         []byte        `json:"bbox"`
-	Caption      *string       `json:"caption"`
-	Metadata     []byte        `json:"metadata"`
-	CreatedByID  uuid.NullUUID `json:"created_by_id"`
-	CreatedAt    time.Time     `json:"created_at"`
+	ID           uuid.UUID       `json:"id"`
+	InspectionID uuid.UUID       `json:"inspection_id"`
+	ViolationID  uuid.NullUUID   `json:"violation_id"`
+	ImageID      uuid.NullUUID   `json:"image_id"`
+	Type         EvidenceType    `json:"type"`
+	StorageKey   *string         `json:"storage_key"`
+	Bbox         json.RawMessage `json:"bbox"`
+	Caption      *string         `json:"caption"`
+	Metadata     json.RawMessage `json:"metadata"`
+	CreatedByID  uuid.NullUUID   `json:"created_by_id"`
+	CreatedAt    time.Time       `json:"created_at"`
 }
 
 type ExtractedDeclaration struct {
@@ -983,9 +984,9 @@ type ExtractedDeclaration struct {
 	Unit               *string           `json:"unit"`
 	NumericValue       pgtype.Numeric    `json:"numeric_value"`
 	Confidence         *float64          `json:"confidence"`
-	Bbox               []byte            `json:"bbox"`
+	Bbox               json.RawMessage   `json:"bbox"`
 	Source             DeclarationSource `json:"source"`
-	ExtractionMetadata []byte            `json:"extraction_metadata"`
+	ExtractionMetadata json.RawMessage   `json:"extraction_metadata"`
 	MongoRefID         *string           `json:"mongo_ref_id"`
 	IsEditedByReviewer bool              `json:"is_edited_by_reviewer"`
 	EditedByID         uuid.NullUUID     `json:"edited_by_id"`
@@ -1004,7 +1005,7 @@ type Inspection struct {
 	Outcome       InspectionOutcome `json:"outcome"`
 	Source        *string           `json:"source"`
 	Notes         *string           `json:"notes"`
-	Metadata      []byte            `json:"metadata"`
+	Metadata      json.RawMessage   `json:"metadata"`
 	StartedAt     *time.Time        `json:"started_at"`
 	CompletedAt   *time.Time        `json:"completed_at"`
 	CreatedAt     time.Time         `json:"created_at"`
@@ -1030,7 +1031,7 @@ type InspectionImage struct {
 	Status           ImageProcessingStatus `json:"status"`
 	Checksum         *string               `json:"checksum"`
 	MongoOcrDocID    *string               `json:"mongo_ocr_doc_id"`
-	ScaleReference   []byte                `json:"scale_reference"`
+	ScaleReference   json.RawMessage       `json:"scale_reference"`
 	CreatedAt        time.Time             `json:"created_at"`
 	UpdatedAt        time.Time             `json:"updated_at"`
 }
@@ -1047,7 +1048,7 @@ type LegalRule struct {
 	EffectiveTo     *time.Time        `json:"effective_to"`
 	IsActive        bool              `json:"is_active"`
 	SeverityDefault ViolationSeverity `json:"severity_default"`
-	Params          []byte            `json:"params"`
+	Params          json.RawMessage   `json:"params"`
 	CreatedByID     uuid.NullUUID     `json:"created_by_id"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
@@ -1065,37 +1066,37 @@ type Manufacturer struct {
 }
 
 type MlJob struct {
-	ID             uuid.UUID     `json:"id"`
-	InspectionID   uuid.UUID     `json:"inspection_id"`
-	ImageID        uuid.NullUUID `json:"image_id"`
-	Type           MlJobType     `json:"type"`
-	Status         MlJobStatus   `json:"status"`
-	QueueName      *string       `json:"queue_name"`
-	BullJobID      *string       `json:"bull_job_id"`
-	Attempts       int32         `json:"attempts"`
-	RequestPayload []byte        `json:"request_payload"`
-	ResultMongoID  *string       `json:"result_mongo_id"`
-	Error          *string       `json:"error"`
-	StartedAt      *time.Time    `json:"started_at"`
-	FinishedAt     *time.Time    `json:"finished_at"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
+	ID             uuid.UUID       `json:"id"`
+	InspectionID   uuid.UUID       `json:"inspection_id"`
+	ImageID        uuid.NullUUID   `json:"image_id"`
+	Type           MlJobType       `json:"type"`
+	Status         MlJobStatus     `json:"status"`
+	QueueName      *string         `json:"queue_name"`
+	BullJobID      *string         `json:"bull_job_id"`
+	Attempts       int32           `json:"attempts"`
+	RequestPayload json.RawMessage `json:"request_payload"`
+	ResultMongoID  *string         `json:"result_mongo_id"`
+	Error          *string         `json:"error"`
+	StartedAt      *time.Time      `json:"started_at"`
+	FinishedAt     *time.Time      `json:"finished_at"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 type Product struct {
-	ID                  uuid.UUID      `json:"id"`
-	Name                string         `json:"name"`
-	Sku                 *string        `json:"sku"`
-	Brand               *string        `json:"brand"`
-	Barcode             *string        `json:"barcode"`
-	CategoryID          uuid.UUID      `json:"category_id"`
-	ManufacturerID      uuid.NullUUID  `json:"manufacturer_id"`
-	NetQuantityDeclared *string        `json:"net_quantity_declared"`
-	MrpDeclared         pgtype.Numeric `json:"mrp_declared"`
-	Attributes          []byte         `json:"attributes"`
-	CreatedByID         uuid.NullUUID  `json:"created_by_id"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
+	ID                  uuid.UUID       `json:"id"`
+	Name                string          `json:"name"`
+	Sku                 *string         `json:"sku"`
+	Brand               *string         `json:"brand"`
+	Barcode             *string         `json:"barcode"`
+	CategoryID          uuid.UUID       `json:"category_id"`
+	ManufacturerID      uuid.NullUUID   `json:"manufacturer_id"`
+	NetQuantityDeclared *string         `json:"net_quantity_declared"`
+	MrpDeclared         pgtype.Numeric  `json:"mrp_declared"`
+	Attributes          json.RawMessage `json:"attributes"`
+	CreatedByID         uuid.NullUUID   `json:"created_by_id"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
 type ProductCategory struct {
@@ -1170,7 +1171,7 @@ type RuleRequirement struct {
 	Key             string              `json:"key"`
 	DeclarationType *DeclarationType    `json:"declaration_type"`
 	Operator        RequirementOperator `json:"operator"`
-	Expected        []byte              `json:"expected"`
+	Expected        json.RawMessage     `json:"expected"`
 	Unit            *string             `json:"unit"`
 	Severity        *ViolationSeverity  `json:"severity"`
 	Message         *string             `json:"message"`

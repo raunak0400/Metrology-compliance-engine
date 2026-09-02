@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -38,15 +39,15 @@ VALUES ($3, $1, $2, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateAuditLogParams struct {
-	Action     AuditAction   `json:"action"`
-	EntityType string        `json:"entity_type"`
-	ActorID    uuid.NullUUID `json:"actor_id"`
-	EntityID   *string       `json:"entity_id"`
-	OldState   []byte        `json:"old_state"`
-	NewState   []byte        `json:"new_state"`
-	Ip         *string       `json:"ip"`
-	UserAgent  *string       `json:"user_agent"`
-	RequestID  *string       `json:"request_id"`
+	Action     AuditAction     `json:"action"`
+	EntityType string          `json:"entity_type"`
+	ActorID    uuid.NullUUID   `json:"actor_id"`
+	EntityID   *string         `json:"entity_id"`
+	OldState   json.RawMessage `json:"old_state"`
+	NewState   json.RawMessage `json:"new_state"`
+	Ip         *string         `json:"ip"`
+	UserAgent  *string         `json:"user_agent"`
+	RequestID  *string         `json:"request_id"`
 }
 
 func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error {

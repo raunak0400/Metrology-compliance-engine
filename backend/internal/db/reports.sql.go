@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,7 +75,7 @@ type GetInspectionForReportRow struct {
 	Outcome          InspectionOutcome `json:"outcome"`
 	Source           *string           `json:"source"`
 	Notes            *string           `json:"notes"`
-	Metadata         []byte            `json:"metadata"`
+	Metadata         json.RawMessage   `json:"metadata"`
 	StartedAt        *time.Time        `json:"started_at"`
 	CompletedAt      *time.Time        `json:"completed_at"`
 	CreatedAt        time.Time         `json:"created_at"`

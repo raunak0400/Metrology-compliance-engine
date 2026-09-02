@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,7 +59,7 @@ type CreateLegalRuleParams struct {
 	EffectiveFrom   *time.Time         `json:"effective_from"`
 	EffectiveTo     *time.Time         `json:"effective_to"`
 	IsActive        *bool              `json:"is_active"`
-	Params          []byte             `json:"params"`
+	Params          json.RawMessage    `json:"params"`
 	CreatedByID     uuid.NullUUID      `json:"created_by_id"`
 }
 
@@ -129,7 +130,7 @@ type CreateRuleRequirementParams struct {
 	IsMandatory     bool                `json:"is_mandatory"`
 	OrderIndex      int32               `json:"order_index"`
 	DeclarationType *DeclarationType    `json:"declaration_type"`
-	Expected        []byte              `json:"expected"`
+	Expected        json.RawMessage     `json:"expected"`
 	Unit            *string             `json:"unit"`
 	Severity        *ViolationSeverity  `json:"severity"`
 	Message         *string             `json:"message"`
@@ -292,7 +293,7 @@ type ListLegalRulesRow struct {
 	EffectiveTo       *time.Time        `json:"effective_to"`
 	IsActive          bool              `json:"is_active"`
 	SeverityDefault   ViolationSeverity `json:"severity_default"`
-	Params            []byte            `json:"params"`
+	Params            json.RawMessage   `json:"params"`
 	CreatedByID       uuid.NullUUID     `json:"created_by_id"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
@@ -444,7 +445,7 @@ type UpdateLegalRuleParams struct {
 	EffectiveFrom   *time.Time         `json:"effective_from"`
 	EffectiveTo     *time.Time         `json:"effective_to"`
 	IsActive        *bool              `json:"is_active"`
-	Params          []byte             `json:"params"`
+	Params          json.RawMessage    `json:"params"`
 }
 
 func (q *Queries) UpdateLegalRule(ctx context.Context, arg UpdateLegalRuleParams) (LegalRule, error) {

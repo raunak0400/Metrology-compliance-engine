@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,11 +92,11 @@ type CreateDatasetAnnotationParams struct {
 	AnnotatorID         uuid.NullUUID     `json:"annotator_id"`
 	FieldLabel          *string           `json:"field_label"`
 	ClassificationLabel *string           `json:"classification_label"`
-	Bbox                []byte            `json:"bbox"`
+	Bbox                json.RawMessage   `json:"bbox"`
 	Value               *string           `json:"value"`
 	Confidence          *float64          `json:"confidence"`
 	Status              *AnnotationStatus `json:"status"`
-	Metadata            []byte            `json:"metadata"`
+	Metadata            json.RawMessage   `json:"metadata"`
 }
 
 func (q *Queries) CreateDatasetAnnotation(ctx context.Context, arg CreateDatasetAnnotationParams) (DatasetAnnotation, error) {
@@ -135,12 +136,12 @@ RETURNING id, dataset_id, version_id, storage_key, source_image_id, mime_type, s
 `
 
 type CreateDatasetItemParams struct {
-	DatasetID     uuid.UUID     `json:"dataset_id"`
-	StorageKey    string        `json:"storage_key"`
-	SourceImageID uuid.NullUUID `json:"source_image_id"`
-	MimeType      *string       `json:"mime_type"`
-	Split         *DatasetSplit `json:"split"`
-	Metadata      []byte        `json:"metadata"`
+	DatasetID     uuid.UUID       `json:"dataset_id"`
+	StorageKey    string          `json:"storage_key"`
+	SourceImageID uuid.NullUUID   `json:"source_image_id"`
+	MimeType      *string         `json:"mime_type"`
+	Split         *DatasetSplit   `json:"split"`
+	Metadata      json.RawMessage `json:"metadata"`
 }
 
 func (q *Queries) CreateDatasetItem(ctx context.Context, arg CreateDatasetItemParams) (DatasetItem, error) {
@@ -240,7 +241,7 @@ type ListDatasetItemsRow struct {
 	MimeType         *string          `json:"mime_type"`
 	Split            DatasetSplit     `json:"split"`
 	AnnotationStatus AnnotationStatus `json:"annotation_status"`
-	Metadata         []byte           `json:"metadata"`
+	Metadata         json.RawMessage  `json:"metadata"`
 	CreatedAt        time.Time        `json:"created_at"`
 	UpdatedAt        time.Time        `json:"updated_at"`
 	AnnotationsCount int64            `json:"annotations_count"`
