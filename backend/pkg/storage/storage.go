@@ -30,6 +30,9 @@ type ObjectStorage interface {
 	SignedDownloadURL(ctx context.Context, key string, ttl time.Duration) (string, error)
 	SignedUploadURL(ctx context.Context, key string, contentType string, ttl time.Duration) (string, error)
 	EnsureBucket(ctx context.Context) error
+	// Ping verifies the storage backend is reachable and the configured
+	// bucket exists (used by the /ready health check).
+	Ping(ctx context.Context) error
 }
 
 // Config holds the S3/MinIO connection settings (see .env.example).
@@ -105,6 +108,17 @@ func (s *minioStorage) SignedUploadURL(ctx context.Context, key string, contentT
 		return "", fmt.Errorf("presign upload %s: %w", key, err)
 	}
 	return u.String(), nil
+}
+
+func (s *minioStorage) Ping(ctx context.Context) error {
+	exists, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("check bucket %s: %w", s.bucket, err)
+	}
+	if !exists {
+		return fmt.Errorf("bucket %s does not exist", s.bucket)
+	}
+	return nil
 }
 
 func (s *minioStorage) EnsureBucket(ctx context.Context) error {

@@ -2,6 +2,11 @@
 *.exe
 /bin/
 /dist/
-api
-worker
-seed
+# Compiled binaries at the backend/ root only (e.g. `go build -o api ./cmd/api`
+# run from backend/) — anchored with a leading slash so these do NOT match
+# the cmd/api, cmd/worker, cmd/seed, cmd/migrate SOURCE directories, which
+# must stay tracked.
+/api
+/worker
+/seed
+/migrate

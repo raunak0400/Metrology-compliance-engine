@@ -114,13 +114,16 @@ cp .env.example .env        # then edit secrets as needed
 # 2. Start infrastructure (Postgres, Mongo, Redis, MinIO + bucket, ML stub)
 docker compose up -d postgres mongodb redis minio minio-setup ml-service
 
-# 3. Apply the SQL migration
-psql "$DATABASE_URL" -f migrations/0001_init.up.sql
+# 3. Apply migrations (tracked in a schema_migrations table via golang-migrate
+#    — safe to re-run; already-applied versions are skipped, not re-executed)
+go run ./cmd/migrate up
 
 # 4. (Only if you changed queries/ or migrations/) regenerate sqlc code
 sqlc generate
 
-# 5. Seed roles, categories, example rules, dev admin
+# 5. Seed roles, categories, dev admin (set SEED_EXAMPLE_RULES=true to also
+#    seed illustrative EXAMPLE legal rule templates for local dev — see
+#    cmd/seed; leave unset for any environment used for real compliance work)
 go run ./cmd/seed
 
 # 6. Run the API and the worker (two terminals)
@@ -134,8 +137,14 @@ Dev admin (from seed): `admin@legalmetrology.local` / `ChangeMe123!`
 ### Run everything in Docker
 
 ```bash
-docker compose up --build   # brings up infra + api + worker + ml stub
+docker compose up --build   # infra -> migrate (one-shot) -> api + worker + ml stub
 ```
+
+`api` and `worker` wait on `migrate` (applies `migrations/*.sql`, then exits)
+and `minio-setup` (creates the bucket, then exits) completing successfully,
+which themselves wait on Postgres/Mongo/Redis/MinIO healthchecks — so
+`docker compose up` brings the whole stack up in the right order with no
+manual steps.
 
 MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`).
 
@@ -167,10 +176,16 @@ of truth; `queries/*.sql` define every query; `sqlc generate` produces the
 type-safe Go bindings in `internal/db` (checked in, but regenerate after
 editing `queries/` or `migrations/`).
 
+`cmd/migrate` (backed by [golang-migrate](https://github.com/golang-migrate/migrate))
+applies `migrations/*.up.sql`/`*.down.sql` and tracks the applied version in a
+`schema_migrations` table, so `up` is safe to run repeatedly — already-applied
+versions are skipped, never re-executed:
+
 ```bash
-psql "$DATABASE_URL" -f migrations/0001_init.up.sql   # apply
-psql "$DATABASE_URL" -f migrations/0001_init.down.sql # roll back (dev only)
-sqlc generate                                          # regenerate internal/db
+go run ./cmd/migrate up            # apply all pending migrations
+go run ./cmd/migrate down          # roll back one migration (dev only)
+go run ./cmd/migrate version       # print current schema version
+sqlc generate                      # regenerate internal/db after editing queries/ or migrations/
 ```
 
 > **Legal rules are seeded as EXAMPLE templates only** (see `cmd/seed`). They
@@ -254,7 +269,7 @@ and from the rule engine.
 ## Testing
 
 ```bash
-go test ./...              # unit tests (rule engine, normalization, measurement, auth, tokens)
+go test ./...              # unit tests (rule engine, normalization, measurement, auth, tokens, config)
 go vet ./...
 gofmt -l .                 # should print nothing
 ```
@@ -262,8 +277,27 @@ gofmt -l .                 # should print nothing
 Unit tests cover the deterministic core (pure, infrastructure-free):
 `internal/compliance/engine`, `internal/compliance` (measurement),
 `internal/declarations` (normalization), `internal/authtoken`, `internal/auth`
-(password hashing), `internal/pagination`. `cmd/api` has an infra-free
-handler test for `/health` and the 404 envelope.
+(password hashing), `internal/pagination`, `internal/config` (env validation).
+`cmd/api` has an infra-free handler test for `/health` and the 404 envelope.
+
+### Infrastructure connectivity tests
+
+`pkg/postgres`, `pkg/mongodb`, `pkg/redisclient`, `pkg/storage` and
+`cmd/migrate` each have a live-connectivity test that's skipped by default and
+only runs when its `TEST_*` env var is set (see `.env.example`) — point these
+at disposable/scratch services, never at dev data:
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/legal_metrology_test?sslmode=disable
+export TEST_MONGODB_URI=mongodb://localhost:27017/legal_metrology_ml_test
+export TEST_REDIS_URL=redis://localhost:6379/1
+export TEST_S3_ENDPOINT=localhost:9000 TEST_S3_ACCESS_KEY=minioadmin TEST_S3_SECRET_KEY=minioadmin TEST_S3_BUCKET=legal-metrology-test
+go test ./pkg/... ./cmd/migrate/...
+```
+
+The `cmd/migrate` test additionally proves migrations apply cleanly to a
+fresh database, are idempotent on re-run, and roll back cleanly — it calls
+`Drop()` on the target database, so it must point at a scratch database.
 
 ---
 
@@ -279,7 +313,9 @@ committed), and no internal error details leaked in production responses.
 ## Health checks
 
 - `GET /health` — liveness only (process is up).
-- `GET /ready` — readiness: pings PostgreSQL, Redis and MongoDB.
+- `GET /ready` — readiness: pings PostgreSQL, Redis, MongoDB and object
+  storage (bucket existence). Returns `503` with a structured error envelope
+  if any dependency isn't reachable.
 
 ---
 

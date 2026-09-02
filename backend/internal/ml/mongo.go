@@ -8,10 +8,13 @@ package ml
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
@@ -25,6 +28,25 @@ type Repository struct {
 
 func NewRepository(db *mongo.Database) *Repository {
 	return &Repository{db: db}
+}
+
+// EnsureIndexes creates the indexes both collections are queried by
+// (inspection_id, image_id, created_at). Safe to call on every process start —
+// index creation is idempotent (a no-op if the index already exists with the
+// same spec).
+func (r *Repository) EnsureIndexes(ctx context.Context) error {
+	byInspectionImageCreated := []mongo.IndexModel{
+		{Keys: bson.D{{Key: "inspectionId", Value: 1}}},
+		{Keys: bson.D{{Key: "imageId", Value: 1}}},
+		{Keys: bson.D{{Key: "createdAt", Value: -1}}},
+	}
+
+	for _, coll := range []string{ocrCollectionName, resultCollectionName} {
+		if _, err := r.db.Collection(coll).Indexes().CreateMany(ctx, byInspectionImageCreated, options.CreateIndexes()); err != nil {
+			return fmt.Errorf("ensure indexes on %s: %w", coll, err)
+		}
+	}
+	return nil
 }
 
 type ocrDocument struct {
