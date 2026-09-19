@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Legal Metrology Verification Portal</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f4f6f9; margin: 0; padding: 30px; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 380px 1fr; gap: 24px; }
+    .card { background: #ffffff; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    h2 { font-size: 20px; margin-top: 0; margin-bottom: 20px; border-bottom: 2px solid #eaeaea; padding-bottom: 10px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #555; }
+    input[type="text"], input[type="number"], select {
+      width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+    }
+    .checkbox-group { display: flex; align-items: center; gap: 8px; }
+    .checkbox-group input { width: auto; }
+    button {
+      width: 100%; background: #0066ff; color: #fff; border: none; padding: 12px; font-size: 15px;
+      font-weight: 600; border-radius: 6px; cursor: pointer; transition: background 0.2s; margin-top: 10px;
+    }
+    button:hover { background: #0052cc; }
+    .loading { display: none; text-align: center; font-weight: bold; color: #0066ff; margin-top: 15px; }
+    .status-badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 13px; }
+    .badge-success { background-color: #e6f4ea; color: #137333; }
+    .badge-fail { background-color: #fce8e6; color: #c5221f; }
+    .results-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    .image-preview-container { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 15px; }
+    .image-preview-container img { max-width: 100%; border-radius: 8px; border: 1px solid #ddd; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+    th { background: #f8f9fa; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Input Form Sidebar -->
+    <div class="card">
+      <h2>Label Analysis Input</h2>
+      <form id="verifyForm">
+        <div class="form-group">
+          <label>Product ID</label>
+          <input type="text" name="product_id" value="SKU-001" required />
+        </div>
+        
+        <div class="form-group">
+          <label>Category</label>
+          <input type="text" name="category" value="packaged_food" required />
+        </div>
+
+        <div class="form-group">
+          <label>Sale Channel</label>
+          <select name="sale_channel">
+            <option value="retail">Retail</option>
+            <option value="e_commerce">E-Commerce</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Net Weight (kg)</label>
+          <input type="number" step="0.001" name="net_weight_kg" value="0.273" required />
+        </div>
+
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="is_imported" name="is_imported" value="true" />
+          <label for="is_imported" style="margin: 0;">Is Imported Product</label>
+        </div>
+
+        <div class="form-group">
+          <label>Product Packaging Photos</label>
+          <input type="file" name="files" multiple accept="image/*" required />
+        </div>
+
+        <button type="submit" id="submitBtn">Run Verification</button>
+        <div class="loading" id="loadingSpinner">Processing OCR & Gemini Model...</div>
+      </form>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="card">
+      <h2>Verification Output</h2>
+      <div id="placeholder">Upload package photos and click run to view processing results.</div>
+      
+      <div id="resultsContainer" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong style="font-size: 18px;" id="resProductId"></strong>
+            <div style="color: #666; font-size: 13px;" id="resShape"></div>
+          </div>
+          <div id="complianceBadge"></div>
+        </div>
+
+        <h3>Annotated Label Output</h3>
+        <div class="image-preview-container" id="imageGallery"></div>
+
+        <h3>Extracted Fields (Legal Metrology)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Field Type</th>
+              <th>Extracted Text</th>
+              <th>Font Height</th>
+            </tr>
+          </thead>
+          <tbody id="fieldsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const form = e.target;
+      const formData = new FormData();
+
+      // 1. Append text fields
+      formData.append("product_id", form.product_id.value);
+      formData.append("category", form.category.value);
+      formData.append("sale_channel", form.sale_channel.value);
+      formData.append("net_weight_kg", form.net_weight_kg.value);
+      formData.append("is_imported", form.is_imported.checked ? "true" : "false");
+
+      // 2. Append ALL selected image files under the same key "files"
+      const fileInput = form.querySelector('input[type="file"]');
+      const selectedFiles = fileInput.files;
+
+      if (!selectedFiles || selectedFiles.length === 0) {
+        alert("Please select at least one image file.");
+        return;
+      }
+
+      // Explicitly iterate over every file selected
+      for (let i = 0; i < selectedFiles.length; i++) {
+        formData.append("files", selectedFiles[i]);
+      }
+
+      // UI state updates
+      const submitBtn = document.getElementById('submitBtn');
+      const loadingSpinner = document.getElementById('loadingSpinner');
+      submitBtn.disabled = true;
+      loadingSpinner.style.display = 'block';
+
+      try {
+        const response = await fetch('/api/verify', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Verification failed");
+        }
+
+        // Render Results
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('resultsContainer').style.display = 'block';
+
+        document.getElementById('resProductId').innerText = data.product_id || '';
+        document.getElementById('resShape').innerText = `Shape Detected: ${data.package_shape || 'N/A'}`;
+
+        const isCompliant = data.panel_analysis?.COMPLIANT;
+        const badgeDiv = document.getElementById('complianceBadge');
+        badgeDiv.className = `status-badge ${isCompliant ? 'badge-success' : 'badge-fail'}`;
+        badgeDiv.innerText = isCompliant ? "PDP COMPLIANT" : "NON-COMPLIANT";
+
+        // Render all returned annotated output images
+        const gallery = document.getElementById('imageGallery');
+        gallery.innerHTML = '';
+        
+        const imageUrls = data.all_annotated_image_urls || [];
+        if (imageUrls.length > 0) {
+          imageUrls.forEach(url => {
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.maxWidth = '100%';
+            img.style.marginBottom = '10px';
+            gallery.appendChild(img);
+          });
+        }
+
+        // Render extracted fields
+        const tableBody = document.getElementById('fieldsTableBody');
+        tableBody.innerHTML = '';
+        if (data.extracted_fields) {
+          data.extracted_fields.forEach(f => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><strong>${f.field_type || ''}</strong></td>
+              <td>${f.text || ''}</td>
+              <td>${f.font_height_mm ? f.font_height_mm + ' mm' : 'N/A'}</td>
+            `;
+            tableBody.appendChild(tr);
+          });
+        }
+
+      } catch (err) {
+        alert("Execution Error: " + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        loadingSpinner.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

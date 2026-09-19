@@ -1,0 +1,59 @@
+# Legal Metrology Rule Engine — Python / FastAPI
+# =================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+*.whl
+MANIFEST
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# --- pytest ---
+.pytest_cache/
+.cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# --- mypy ---
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Secrets / env files ---
+.env
+.env.*
+secrets.json
+!rules_config.json
+
+# --- OS ---
+desktop.ini

@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-panel: var(--panel);
+  --color-border-color: var(--border);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-inter), sans-serif;
+  --font-mono: var(--font-mono), monospace;
+}
+
+:root {
+  /* LIGHT MODE: Clean Industrial Steel / Government White */
+  --bg: #f4f4f5; 
+  --fg: #09090b; 
+  --panel: #ffffff;
+  --border: #e4e4e7; 
+  --accent: #d97706; /* Industrial Amber */
+  --muted: #71717a;
+  --hazard-dark: #171717;
+}
+
+.dark {
+  /* DARK MODE: True Tactical Black (Zero Blue Tint) */
+  --bg: #000000;
+  --fg: #fafafa;
+  --panel: #09090b; /* Very dark zinc */
+  --border: #27272a; 
+  --accent: #f59e0b; /* Bright Amber */
+  --muted: #a1a1aa;
+  --hazard-dark: #000000;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+/* Perfected Hazard Striping */
+.bg-hazard {
+  background-image: repeating-linear-gradient(45deg, var(--hazard-dark), var(--hazard-dark) 10px, var(--accent) 10px, var(--accent) 20px);
+}
+
+/* Tactical Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}

@@ -1,0 +1,37 @@
+{
+  "name": "sih-metrology-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 10.1.27.76",
+    "build": "next build",
+    "start": "next start -H 10.1.27.76"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
+    "@tanstack/react-table": "^9.2.4",
+    "clsx": "^2.1.1",
+    "framer-motion": "^13.1.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^1.38.0",
+    "next": "16.3.4",
+    "next-themes": "^0.4.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-hook-form": "^7.87.0",
+    "react-webcam": "^7.2.0",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5"
+  }
+}

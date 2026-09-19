@@ -1,0 +1,137 @@
+{
+  "ruleset_version": "2011-r6-v1.0",
+  "ruleset_description": "Legal Metrology (Packaged Commodities) Rules, 2011 + 2017 Amendments",
+  "last_updated": "2023-07-01",
+
+  "confidence_threshold": 0.75,
+
+  "bulk_exemption_thresholds": {
+    "default_kg": 25,
+    "default_l": 25,
+    "cement_kg": 50,
+    "cement_l": 50,
+    "fertilizer_kg": 50,
+    "fertilizer_l": 50,
+    "agricultural_produce_kg": 50,
+    "agricultural_produce_l": 50
+  },
+
+  "font_size_thresholds_mm": {
+    "printed": 1.0,
+    "embossed_molded_blown": 2.0
+  },
+
+  "mrp_required_phrases": [
+    "incl. of all taxes",
+    "inclusive of all taxes",
+    "incl of all taxes",
+    "incl. of taxes",
+    "incl of taxes",
+    "including all taxes",
+    "all taxes inclusive",
+    "max. retail price (incl. of all taxes)",
+    "mrp (incl. of all taxes)",
+    "mrp incl of all taxes"
+  ],
+
+  "net_quantity_allowed_units": {
+    "weight": ["g", "gm", "gms", "gram", "grams", "kg", "kgs", "kilogram", "kilograms"],
+    "volume": ["ml", "milliliter", "millilitre", "milliliters", "millilitres", "l", "ltr", "litre", "litres", "liter", "liters"],
+    "length": ["m", "meter", "metre", "cm", "centimeter", "centimetre", "mm", "millimeter", "millimetre"],
+    "count": ["nos", "no", "pcs", "pc", "pieces", "piece", "units", "unit", "tabs", "tab", "capsules", "capsule", "sheets", "sheet", "pairs", "pair"],
+    "area": ["sqm", "sq.m", "m2", "sqft", "sq.ft"]
+  },
+
+  "consumer_care_patterns": {
+    "phone_regex": "(?:(?:\\+91|0)?[6-9]\\d{9})|(?:0\\d{2,4}[- ]?\\d{6,8})",
+    "email_regex": "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"
+  },
+
+  "mfg_date_patterns": [
+    "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[\\s/\\-\\.]*\\d{2,4}",
+    "\\d{1,2}[/\\-\\.]\\d{4}",
+    "\\d{4}[/\\-\\.]\\d{1,2}",
+    "(?:january|february|march|april|may|june|july|august|september|october|november|december)[,\\s]+\\d{4}",
+    "\\d{2}/\\d{4}",
+    "\\d{2}-\\d{4}"
+  ],
+
+  "mandatory_field_types": [
+    "manufacturer",
+    "net_quantity",
+    "mrp",
+    "mfg_date",
+    "consumer_care",
+    "generic_name"
+  ],
+
+  "_ecommerce_note": "Rule 6(10) 2017 Amendment: e-commerce ONLINE LISTINGS must display all mandatory declarations (adds platform obligation). It does NOT exempt the physical label from any declaration. No physical-label rules are skipped for ecommerce sale channel.",
+
+  "food_advisory_fields": ["mfg_date", "net_quantity"],
+
+  "imported_required_fields": ["country_of_origin"],
+
+  "placement_mandatory_on_principal_panel": [
+    "mrp",
+    "net_quantity",
+    "manufacturer",
+    "generic_name"
+  ],
+
+  "rules_metadata": {
+    "manufacturer_rule": {
+      "rule_id": "MANUFACTURER_001",
+      "clause": "Rule 6(1)(a)",
+      "severity": "major",
+      "description": "Name and address of manufacturer/packer/importer must be declared"
+    },
+    "net_quantity_rule": {
+      "rule_id": "NET_QUANTITY_001",
+      "clause": "Rule 6(1)(c) & Rule 11",
+      "severity": "major",
+      "description": "Net quantity in standard units must be declared"
+    },
+    "mrp_rule": {
+      "rule_id": "MRP_001",
+      "clause": "Rule 6(1)(e)",
+      "severity": "major",
+      "description": "MRP inclusive of all taxes must be declared"
+    },
+    "mfg_date_rule": {
+      "rule_id": "MFG_DATE_001",
+      "clause": "Rule 6(1)(d)",
+      "severity": "major",
+      "description": "Month and year of manufacture/packing must be declared"
+    },
+    "consumer_care_rule": {
+      "rule_id": "CONSUMER_CARE_001",
+      "clause": "Rule 6(1)(f)",
+      "severity": "minor",
+      "description": "Consumer care details (phone/email) must be declared"
+    },
+    "country_of_origin_rule": {
+      "rule_id": "COUNTRY_ORIGIN_001",
+      "clause": "Rule 6(1)(b) proviso",
+      "severity": "major",
+      "description": "Country of origin must be declared on imported goods"
+    },
+    "font_size_rule": {
+      "rule_id": "FONT_SIZE_001",
+      "clause": "Rule 7",
+      "severity": "minor",
+      "description": "All declarations must meet minimum font size requirements"
+    },
+    "placement_rule": {
+      "rule_id": "PLACEMENT_001",
+      "clause": "Rule 9",
+      "severity": "minor",
+      "description": "Mandatory declarations must appear on the principal display panel"
+    },
+    "generic_name_rule": {
+      "rule_id": "GENERIC_NAME_001",
+      "clause": "Rule 6(1)(a) & Rule 2(l)",
+      "severity": "major",
+      "description": "Generic or common name of the commodity must be declared"
+    }
+  }
+}
